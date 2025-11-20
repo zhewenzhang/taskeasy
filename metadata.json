@@ -1,0 +1,5 @@
+{
+  "name": "Matrix AI - Task Strategist",
+  "description": "An intelligent task management tool using the Eisenhower Matrix. It uses Gemini to assess task importance and urgency through context-aware questions, providing actionable breakdowns and advice.",
+  "requestFramePermissions": []
+}
