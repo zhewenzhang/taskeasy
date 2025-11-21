@@ -5,7 +5,7 @@ import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection } 
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   aiProvider: 'gemini',
@@ -19,6 +19,14 @@ const DEFAULT_SETTINGS: UserSettings = {
   supabaseUrl: "",
   supabaseKey: ""
 };
+
+const THINKING_MESSAGES = [
+  "正在深度拆解任务结构...",
+  "正在检索匹配的思维模型...",
+  "正在评估执行风险与机会...",
+  "正在生成最佳执行策略...",
+  "正在完善行动步骤细节..."
+];
 
 const App: React.FC = () => {
   // Load state from local storage
@@ -53,6 +61,7 @@ const App: React.FC = () => {
   const [inputName, setInputName] = useState('');
   const [inputTime, setInputTime] = useState(''); 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [thinkingStep, setThinkingStep] = useState(0);
 
   // Temp state for settings form
   const [tempSettings, setTempSettings] = useState<UserSettings>(state.settings);
@@ -70,6 +79,18 @@ const App: React.FC = () => {
     root.classList.add(state.theme);
     localStorage.setItem('matrix_ai_theme', state.theme);
   }, [state.theme]);
+
+  // Thinking Animation Effect
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (state.wizardStep === 'analyzing') {
+      setThinkingStep(0);
+      interval = setInterval(() => {
+        setThinkingStep(prev => (prev + 1) % THINKING_MESSAGES.length);
+      }, 2000); // Change message every 2s
+    }
+    return () => clearInterval(interval);
+  }, [state.wizardStep]);
 
   // Data Sync
   const refreshTasks = useCallback(async () => {
@@ -339,12 +360,16 @@ const App: React.FC = () => {
         </div>
 
         <div>
-           <div className="text-xs text-fuchsia-600 dark:text-fuchsia-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-            <BrainCircuit className="w-4 h-4" /> 智能建议
+           <div className="text-xs text-indigo-600 dark:text-indigo-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+            <BrainCircuit className="w-4 h-4" /> 智能建议与策略
           </div>
-          <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed bg-fuchsia-50 dark:bg-gradient-to-br dark:from-fuchsia-900/10 dark:to-purple-900/10 p-4 rounded-lg border border-fuchsia-100 dark:border-fuchsia-500/20">
-            {task.advice}
-          </p>
+          {/* Enhanced Contrast for Advice Section */}
+          <div className="text-slate-900 dark:text-indigo-100 text-sm leading-relaxed bg-indigo-50/80 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700/50 shadow-sm">
+             <div className="flex items-start gap-2">
+               <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
+               <span className="whitespace-pre-wrap font-medium dark:font-normal">{task.advice}</span>
+             </div>
+          </div>
         </div>
 
         {/* Delete button for overlay */}
@@ -365,26 +390,21 @@ const App: React.FC = () => {
     <div className="w-full animate-in fade-in duration-500 h-full flex flex-col">
       {/* Dashboard Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 px-1 gap-4">
-        <div className="flex items-center gap-4">
-           <div className="p-3 bg-blue-600 rounded-xl shadow-lg shadow-blue-500/30 dark:shadow-blue-900/30">
-             <LayoutGrid className="text-white w-6 h-6" /> 
-           </div>
-           <div>
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">任务矩阵看板</h2>
-              <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
-                <span>Task Priority Matrix</span>
-                {isSupabaseConfigured ? (
-                   <span className="flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50 text-xs">
-                     <Cloud className="w-3 h-3 mr-1" /> Sync On
-                   </span>
-                ) : (
-                   <span className="flex items-center text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded text-xs">
-                     <Database className="w-3 h-3 mr-1" /> Local
-                   </span>
-                )}
-                {state.isSyncing && <span className="text-blue-500 animate-pulse text-xs">同步中...</span>}
-              </div>
-           </div>
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">任务矩阵看板</h2>
+          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
+            <span>Task Priority Matrix</span>
+            {isSupabaseConfigured ? (
+                <span className="flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50 text-xs">
+                  <Cloud className="w-3 h-3 mr-1" /> Sync On
+                </span>
+            ) : (
+                <span className="flex items-center text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded text-xs">
+                  <Database className="w-3 h-3 mr-1" /> Local
+                </span>
+            )}
+            {state.isSyncing && <span className="text-blue-500 animate-pulse text-xs">同步中...</span>}
+          </div>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
           <Button variant="secondary" onClick={() => navigateTo('stats')} className="flex-1 md:flex-none !py-2.5 !px-4">
@@ -562,412 +582,406 @@ const App: React.FC = () => {
                 onClick={() => setTempSettings({...tempSettings, aiProvider: 'gemini'})}
                 className={`flex flex-col items-center justify-center py-3 rounded-md text-sm font-medium transition-all ${tempSettings.aiProvider === 'gemini' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
               >
-                <span className="flex items-center gap-2"><Zap className="w-4 h-4" /> Google Gemini</span>
+                 <span className="flex items-center gap-2"><Sparkles className="w-4 h-4" /> Google Gemini</span>
               </button>
               <button 
                 onClick={() => setTempSettings({...tempSettings, aiProvider: 'siliconflow'})}
-                className={`flex flex-col items-center justify-center py-3 rounded-md text-sm font-medium transition-all ${tempSettings.aiProvider === 'siliconflow' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                 className={`flex flex-col items-center justify-center py-3 rounded-md text-sm font-medium transition-all ${tempSettings.aiProvider === 'siliconflow' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
               >
-                <span className="flex items-center gap-2"><Box className="w-4 h-4" /> SiliconFlow (DeepSeek)</span>
+                 <span className="flex items-center gap-2"><Zap className="w-4 h-4" /> SiliconFlow</span>
               </button>
             </div>
 
-            {/* GEMINI SETTINGS */}
+            {/* Gemini Settings */}
             {tempSettings.aiProvider === 'gemini' && (
-              <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-6">
-                 <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300">
-                   <div className="flex items-center gap-2 mb-2 text-blue-700 dark:text-blue-400 font-bold">
-                     <HelpCircle className="w-4 h-4" /> Google Gemini API
-                   </div>
-                   <ol className="list-decimal list-inside space-y-1.5 text-xs md:text-sm ml-1 opacity-90">
-                     <li>需要访问 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline text-blue-600 hover:text-blue-500">Google AI Studio</a> 获取 Key。</li>
-                     <li>免费版有每分钟请求限制 (RPM Limit)。</li>
-                   </ol>
-                </div>
-
-                 <InputField
-                   label="Gemini API Key"
-                   type="password"
-                   placeholder="AIzaSy..."
-                   value={tempSettings.geminiApiKey}
-                   onChange={(e) => setTempSettings({...tempSettings, geminiApiKey: e.target.value})}
-                 />
-
-                 <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-400 mb-3 flex items-center gap-2">
-                      <Zap className="w-4 h-4" /> 模型选择
-                    </label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                       <div 
-                         onClick={() => setTempSettings({ ...tempSettings, aiModel: 'flash' })}
-                         className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${tempSettings.aiModel === 'flash' 
-                           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                           : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-600'}`}
-                       >
-                          <div className="flex items-center gap-2 mb-2">
-                             <span className="font-bold text-slate-800 dark:text-slate-200">Gemini 2.5 Flash</span>
-                          </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">极速响应，高性价比。</p>
-                       </div>
-
-                       <div 
-                         onClick={() => setTempSettings({ ...tempSettings, aiModel: 'pro' })}
-                         className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${tempSettings.aiModel === 'pro' 
-                           ? 'border-fuchsia-500 bg-fuchsia-50 dark:bg-fuchsia-900/20' 
-                           : 'border-slate-200 dark:border-slate-700 hover:border-fuchsia-300 dark:hover:border-slate-600'}`}
-                       >
-                          <div className="flex items-center gap-2 mb-2">
-                             <span className="font-bold text-slate-800 dark:text-slate-200">Gemini 3 Pro</span>
-                          </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">深度推理，更强逻辑。</p>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-            )}
-
-            {/* SILICONFLOW SETTINGS */}
-            {tempSettings.aiProvider === 'siliconflow' && (
-               <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-6">
-                  <div className="bg-purple-50/50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300">
-                    <div className="flex items-center gap-2 mb-2 text-purple-700 dark:text-purple-400 font-bold">
-                      <HelpCircle className="w-4 h-4" /> SiliconFlow (硅基流动)
-                    </div>
-                    <ol className="list-decimal list-inside space-y-1.5 text-xs md:text-sm ml-1 opacity-90">
-                      <li>注册 <a href="https://cloud.siliconflow.cn/i/VaX2Q5j8" target="_blank" rel="noreferrer" className="underline text-purple-600 hover:text-purple-500">SiliconCloud</a> 获取 API Key。</li>
-                      <li>支持 DeepSeek-V3, Qwen2.5, GLM-4 等开源模型。</li>
-                      <li><span className="font-bold text-emerald-600 dark:text-emerald-400">部分模型（如 Qwen/DeepSeek 基础版）目前免费使用。</span></li>
-                    </ol>
+               <div className="space-y-5 animate-in fade-in">
+                  <InputField 
+                    label="Gemini API Key" 
+                    type="password" 
+                    placeholder="AIzaSy..." 
+                    value={tempSettings.geminiApiKey}
+                    onChange={(e) => setTempSettings({...tempSettings, geminiApiKey: e.target.value})}
+                  />
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-4 flex gap-3">
+                     <HelpCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+                     <div className="text-sm text-blue-800 dark:text-blue-200">
+                        <p className="font-semibold mb-1">如何获取 Key?</p>
+                        <p className="mb-2">访问 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-blue-600">Google AI Studio</a> 创建免费 API Key。</p>
+                        <p className="text-xs opacity-80">注意：免费版有频率限制 (RPM)，如遇报错请稍候再试。</p>
+                     </div>
                   </div>
-
-                  <InputField
-                    label="SiliconFlow API Key"
-                    type="password"
-                    placeholder="sk-..."
-                    value={tempSettings.siliconFlowApiKey}
-                    onChange={(e) => setTempSettings({...tempSettings, siliconFlowApiKey: e.target.value})}
-                  />
-
-                  <InputField
-                    label="模型名称 (Model ID)"
-                    placeholder="deepseek-ai/DeepSeek-V3"
-                    value={tempSettings.siliconFlowModel}
-                    onChange={(e) => setTempSettings({...tempSettings, siliconFlowModel: e.target.value})}
-                    helperText="输入 SiliconCloud 上可用的模型 ID，例如: deepseek-ai/DeepSeek-V3, Qwen/Qwen2.5-72B-Instruct, THUDM/glm-4-9b-chat"
-                  />
-                  
-                   <div className="flex gap-2 flex-wrap">
-                      {["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct", "THUDM/glm-4-9b-chat"].map(model => (
-                        <button 
-                          key={model}
-                          onClick={() => setTempSettings({...tempSettings, siliconFlowModel: model})}
-                          className="px-3 py-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-purple-100 dark:hover:bg-purple-900/30 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full transition-colors"
-                        >
-                          {model.split('/')[1]}
-                        </button>
-                      ))}
-                   </div>
                </div>
             )}
 
-             {/* Connection Test Button */}
-             <div className="flex items-center gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                {aiConnectionStatus === 'success' && <span className="text-emerald-500 dark:text-emerald-400 text-sm font-bold">连接正常</span>}
-                {aiConnectionStatus === 'failed' && <span className="text-rose-500 dark:text-rose-400 text-sm font-bold">连接异常</span>}
-                <Button variant="outline" onClick={handleTestAIConnection} isLoading={aiConnectionStatus === 'testing'} className="text-xs h-9 px-4">
-                  测试 {tempSettings.aiProvider === 'gemini' ? 'Gemini' : 'SiliconFlow'} 连接
-                </Button>
-             </div>
+            {/* SiliconFlow Settings */}
+            {tempSettings.aiProvider === 'siliconflow' && (
+               <div className="space-y-5 animate-in fade-in">
+                  <InputField 
+                    label="SiliconFlow API Key" 
+                    type="password" 
+                    placeholder="sk-..." 
+                    value={tempSettings.siliconFlowApiKey}
+                    onChange={(e) => setTempSettings({...tempSettings, siliconFlowApiKey: e.target.value})}
+                  />
+                  <InputField 
+                    label="Model Name (Optional)" 
+                    type="text" 
+                    placeholder="deepseek-ai/DeepSeek-V3" 
+                    value={tempSettings.siliconFlowModel}
+                    helperText="默认为 deepseek-ai/DeepSeek-V3，支持 Qwen/DeepSeek 系列"
+                    onChange={(e) => setTempSettings({...tempSettings, siliconFlowModel: e.target.value})}
+                  />
+                  <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-lg p-4 flex gap-3">
+                     <ExternalLink className="w-5 h-5 text-purple-500 shrink-0 mt-0.5" />
+                     <div className="text-sm text-purple-800 dark:text-purple-200">
+                        <p className="font-semibold mb-1">关于 SiliconFlow</p>
+                        <p>支持 DeepSeek V3、Qwen 2.5 等国产开源模型，速度快且部分免费。请前往 <a href="https://cloud.siliconflow.cn" target="_blank" className="underline font-bold">硅基流动官网</a> 注册获取 Key。</p>
+                     </div>
+                  </div>
+               </div>
+            )}
 
-             {/* Temperature Slider */}
-             <div>
-                <div className="flex justify-between mb-2">
-                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-400 flex items-center gap-2">
-                     <Sliders className="w-4 h-4" /> 创意发散度 (Temperature): {tempSettings.creativity}
-                   </label>
-                   <span className="text-xs text-slate-500 font-mono">
-                     {tempSettings.creativity < 0.4 ? '严谨 (Precise)' : tempSettings.creativity > 0.7 ? '创意 (Creative)' : '平衡 (Balanced)'}
-                   </span>
+             <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">连通性测试</span>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleTestAIConnection}
+                    isLoading={aiConnectionStatus === 'testing'}
+                    className="!py-2 !text-sm"
+                  >
+                    {aiConnectionStatus === 'success' ? '连接成功' : aiConnectionStatus === 'failed' ? '连接失败' : '测试连接'}
+                  </Button>
                 </div>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="1" 
-                  step="0.1" 
-                  value={tempSettings.creativity} 
-                  onChange={(e) => setTempSettings({...tempSettings, creativity: parseFloat(e.target.value)})}
-                  className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                />
-             </div>
+            </div>
           </div>
         </Card>
 
-        {/* Supabase Database */}
-        <Card title="Supabase 数据库连接" actions={<Database className="text-emerald-500 dark:text-emerald-400 w-5 h-5" />}>
-           <div className="space-y-5">
-             {/* Instructions Block */}
-             <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300">
-                <div className="flex items-center gap-2 mb-2 text-emerald-700 dark:text-emerald-400 font-bold">
-                  <HelpCircle className="w-4 h-4" /> 如何获取连接信息？
-                </div>
-                <ol className="list-decimal list-inside space-y-1.5 text-xs md:text-sm ml-1 opacity-90">
-                  <li>登录 <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="underline text-emerald-600 hover:text-emerald-500 font-medium">Supabase Dashboard</a> 并进入您的项目。</li>
-                  <li>在最左侧的侧边栏底部，点击 <strong>齿轮图标 (Project Settings)</strong>。</li>
-                  <li>在设置菜单的 "Configuration" 栏目下，点击 <strong>API</strong>。</li>
-                  <li>复制页面最上方的 <strong>Project URL</strong> 填入下方第一个框。</li>
-                  <li>复制下方的 <strong>anon public</strong> Key (在 Project API keys 区域) 填入下方第二个框。</li>
-                </ol>
-             </div>
-
-             <div className="grid md:grid-cols-2 gap-6">
-               <InputField
-                  label="Project URL"
-                  placeholder="https://xyz.supabase.co"
-                  value={tempSettings.supabaseUrl}
-                  onChange={(e) => setTempSettings({...tempSettings, supabaseUrl: e.target.value})}
-               />
-               <InputField
-                  label="Anon / Public Key"
-                  type="password"
-                  placeholder="eyJhbGciOiJIUzI1Ni..."
-                  value={tempSettings.supabaseKey}
-                  onChange={(e) => setTempSettings({...tempSettings, supabaseKey: e.target.value})}
-               />
-             </div>
-             
-             <div className="flex flex-col md:flex-row justify-between items-center bg-slate-50 dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800 gap-4">
-                <div className="flex flex-col text-center md:text-left">
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">连接测试</span>
-                  <span className="text-xs text-slate-500">验证您的 Supabase 凭证是否有效</span>
-                </div>
-                
-                <div className="flex items-center gap-3 w-full md:w-auto justify-center">
-                  {connectionStatus === 'success' && <span className="text-emerald-500 dark:text-emerald-400 text-sm font-bold">连接成功</span>}
-                  {connectionStatus === 'failed' && <span className="text-rose-500 dark:text-rose-400 text-sm font-bold">连接失败</span>}
-                  <Button 
-                    variant="outline" 
-                    onClick={testSupabaseConnection} 
-                    isLoading={connectionStatus === 'testing'}
-                    disabled={!tempSettings.supabaseUrl || !tempSettings.supabaseKey}
-                  >
-                    测试连接
-                  </Button>
-                </div>
-             </div>
-           </div>
-        </Card>
-
-        {/* Context */}
-        <Card title="AI 个性化微调" actions={<UserCog className="text-fuchsia-500 dark:text-fuchsia-400 w-5 h-5" />}>
-          <TextArea
-            label="用户角色设定 (User Context)"
-            placeholder="例如：我是互联网公司的高级产品经理..."
+        <Card title="个性化参数 (Prompt)" actions={<UserCog className="text-purple-500 dark:text-purple-400 w-5 h-5" />}>
+          <TextArea 
+            label="用户角色设定 (User Context)" 
+            placeholder="例如：我是一名软件工程师，平时工作涉及很多会议和代码开发..."
             value={tempSettings.userContext}
             onChange={(e) => setTempSettings({...tempSettings, userContext: e.target.value})}
-            className="min-h-[100px]"
+            helperText="让 AI 了解你的职业背景，生成的建议会更精准。"
           />
-          <TextArea
-            label="高级指令 (System Prompt)"
-            placeholder="例如：请用更严厉的语气..."
+          <TextArea 
+            label="高级指令 (System Prompt)" 
+            placeholder="例如：请用更严厉的语气；或者请总是用结构化的方式回答..."
             value={tempSettings.customPrompt}
             onChange={(e) => setTempSettings({...tempSettings, customPrompt: e.target.value})}
-            className="min-h-[100px]"
+            helperText="附加给 AI 的额外指令。"
           />
+        </Card>
+
+        <Card title="数据同步 (Supabase)" actions={<Database className="text-emerald-500 dark:text-emerald-400 w-5 h-5" />}>
+          <div className="space-y-5">
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300">
+              <h4 className="font-bold mb-2 flex items-center gap-2"><HelpCircle className="w-4 h-4"/> 如何连接 Supabase?</h4>
+              <ol className="list-decimal list-inside space-y-1 ml-1 marker:text-slate-400">
+                <li>登录 <a href="https://supabase.com/dashboard" target="_blank" className="text-blue-500 hover:underline">Supabase Dashboard</a></li>
+                <li>进入您的 Project</li>
+                <li>点击左下角齿轮图标 <strong>Project Settings</strong></li>
+                <li>点击侧边栏的 <strong>API</strong> 菜单</li>
+                <li>复制顶部的 <strong>Project URL</strong></li>
+                <li>复制下方的 <strong>anon public</strong> Key</li>
+              </ol>
+            </div>
+            <InputField 
+              label="Project URL" 
+              placeholder="https://xyz.supabase.co" 
+              value={tempSettings.supabaseUrl}
+              onChange={(e) => setTempSettings({...tempSettings, supabaseUrl: e.target.value})}
+            />
+            <InputField 
+              label="Anon Public Key" 
+              type="password" 
+              placeholder="eyJh..." 
+              value={tempSettings.supabaseKey}
+              onChange={(e) => setTempSettings({...tempSettings, supabaseKey: e.target.value})}
+            />
+            <div className="flex justify-end">
+               <Button 
+                 type="button" 
+                 variant="outline" 
+                 onClick={testSupabaseConnection} 
+                 isLoading={connectionStatus === 'testing'}
+               >
+                 {connectionStatus === 'success' ? '连接成功' : connectionStatus === 'failed' ? '连接失败' : '测试连接'}
+               </Button>
+            </div>
+          </div>
         </Card>
       </div>
     </div>
   );
 
-  const renderWizard = () => (
-    <div className="w-full max-w-3xl mx-auto pt-4 md:pt-6">
-      <div className="mb-6 md:mb-8 flex items-center gap-2 text-slate-500 dark:text-slate-400 cursor-pointer hover:text-blue-500 transition-colors w-fit group" onClick={() => navigateTo('dashboard')}>
-        <div className="p-1 rounded-full bg-slate-100 dark:bg-slate-800 group-hover:bg-blue-500/20 transition-colors">
-           <RotateCcw className="w-4 h-4" /> 
-        </div>
-        <span className="text-base font-medium">返回看板</span>
-      </div>
-
-      {state.error && (
-        <div className="mb-6 md:mb-8 p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-300 text-base rounded-lg flex items-center gap-3 shadow-lg">
-          <X className="w-5 h-5 shrink-0" /> {state.error}
-        </div>
-      )}
-
-      {/* STEP 1: INPUT */}
-      {state.wizardStep === 'input' && (
-        <Card title="创建新任务" className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="space-y-6 md:space-y-8 py-4">
+  const renderWizard = () => {
+    if (state.wizardStep === 'input') {
+      return (
+        <div className="max-w-xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-500">
+          <div className="text-center mb-8 md:mb-10">
+            <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-500/10">
+              <Terminal className="w-8 h-8" />
+            </div>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">新任务评估</h2>
+            <p className="text-slate-500 dark:text-slate-400">通过3个智能问题，AI 将帮你把任务放入正确的象限。</p>
+          </div>
+          <Card className="shadow-2xl shadow-slate-200/50 dark:shadow-none border-0 ring-1 ring-slate-200 dark:ring-slate-700">
             <InputField 
               label="任务名称" 
-              placeholder="输入具体的任务内容..."
+              placeholder="例如：完成 Q3 季度报告" 
               value={inputName}
               onChange={(e) => setInputName(e.target.value)}
+              autoFocus
             />
-            
-            <div className="mb-4">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-400 mb-3">截止日期 (Expected Deadline)</label>
-              <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-                <input 
-                  type="date"
-                  className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-lg p-3 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all w-full md:w-auto min-w-[200px]"
-                  value={inputTime}
-                  onChange={(e) => setInputTime(e.target.value)}
-                  style={{ colorScheme: state.theme }}
-                />
-                
-                <div className="flex gap-2 flex-wrap w-full md:w-auto">
-                   <button onClick={() => setDateOffset(1)} className="flex-1 md:flex-none px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white text-sm font-medium rounded-md transition-all">明天 (+1)</button>
-                   <button onClick={() => setDateOffset(3)} className="flex-1 md:flex-none px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white text-sm font-medium rounded-md transition-all">3天后</button>
-                   <button onClick={() => setDateOffset(7)} className="flex-1 md:flex-none px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white text-sm font-medium rounded-md transition-all">下周</button>
-                </div>
-              </div>
-            </div>
-            
-            <div className="pt-6 flex justify-end border-t border-slate-100 dark:border-slate-700/50">
-              <Button onClick={handleStartAssessment} disabled={!inputName || !inputTime} isLoading={isLoading} className="w-full md:w-auto">
-                开始 AI 评估 <ArrowRight className="inline w-5 h-5 ml-2" />
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* STEP 2: ASSESSMENT */}
-      {state.wizardStep === 'assessment' && (
-        <Card title="情境评估" className="animate-in fade-in slide-in-from-right-8 duration-500">
-          <div className="space-y-8 py-2">
-            <div className="flex items-center justify-between text-base text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-              <div className="flex items-center gap-3">
-                <Terminal className="w-5 h-5 text-blue-500" />
-                <span className="font-medium">{state.currentTaskInput?.name}</span>
-              </div>
-              <div className="flex items-center gap-2 font-mono text-sm text-slate-500 dark:text-slate-400">
-                <CalendarDays className="w-4 h-4" />
-                {state.currentTaskInput?.estimatedTime}
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              {state.currentQuestions.map((q, index) => (
-                <div key={q.id} className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
-                  <p className="mb-4 text-lg text-slate-800 dark:text-slate-200 font-medium leading-snug">{q.text}</p>
-                  <div className="flex gap-4">
-                    <button onClick={() => toggleAnswer(index.toString(), true)} className={`flex-1 py-3 text-sm font-bold uppercase tracking-wide border transition-all rounded-lg ${state.currentAnswers[index.toString()] === true ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>是 (YES)</button>
-                    <button onClick={() => toggleAnswer(index.toString(), false)} className={`flex-1 py-3 text-sm font-bold uppercase tracking-wide border transition-all rounded-lg ${state.currentAnswers[index.toString()] === false ? 'bg-slate-200 dark:bg-slate-200 border-slate-300 text-slate-900 shadow-lg' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>否 (NO)</button>
-                  </div>
-                </div>
+            <InputField 
+              label="截止日期" 
+              type="date" 
+              value={inputTime}
+              onChange={(e) => setInputTime(e.target.value)}
+            />
+            <div className="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
+              {[0, 1, 3, 7].map(days => (
+                <button 
+                  key={days}
+                  onClick={() => setDateOffset(days)}
+                  className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full transition-colors whitespace-nowrap"
+                >
+                  {days === 0 ? '今天' : days === 1 ? '明天' : `+${days}天`}
+                </button>
               ))}
             </div>
 
-            <div className="pt-6 flex justify-end gap-4 border-t border-slate-100 dark:border-slate-700/50">
-              <Button variant="outline" onClick={startNewTask} disabled={isLoading}>重置</Button>
-              <Button onClick={handleAnalyze} disabled={Object.keys(state.currentAnswers).length !== state.currentQuestions.length} isLoading={isLoading}>生成决策方案</Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* STEP 3: LOADING */}
-      {state.wizardStep === 'analyzing' && (
-        <div className="flex flex-col items-center justify-center h-80 animate-in fade-in duration-500 bg-slate-50 dark:bg-slate-900/30 rounded-2xl border border-slate-200 dark:border-slate-800">
-          <div className="relative w-20 h-20 mb-8">
-            <div className="absolute inset-0 border-4 border-slate-200 dark:border-slate-700 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
-          </div>
-          <p className="text-lg font-medium text-slate-600 dark:text-slate-300 animate-pulse">正在构建任务决策模型...</p>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">
-             {state.settings.aiProvider === 'gemini' ? 'Gemini 正在思考...' : `${state.settings.siliconFlowModel?.split('/')[1] || 'AI'} 正在分析...`}
-          </p>
-        </div>
-      )}
-
-      {/* STEP 4: RESULT PREVIEW */}
-      {state.wizardStep === 'result' && state.currentAnalysis && (
-        <div className="space-y-8 animate-in zoom-in-95 duration-500">
-          <Card title="决策分析报告" className="border-t-4 border-t-blue-500 shadow-2xl">
-            <div className="space-y-8 py-2">
-              <div>
-                <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-3">
-                  <span className={`w-4 h-4 rounded-full ${state.currentAnalysis.quadrant === 'Do' ? 'bg-blue-500' : state.currentAnalysis.quadrant === 'Plan' ? 'bg-emerald-500' : state.currentAnalysis.quadrant === 'Delegate' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
-                  {state.currentAnalysis.quadrant === 'Do' ? '重要且紧急 (Do)' : state.currentAnalysis.quadrant === 'Plan' ? '重要不紧急 (Plan)' : state.currentAnalysis.quadrant === 'Delegate' ? '不重要紧急 (Delegate)' : '不重要不紧急 (Eliminate)'}
-                </h3>
-                <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-xl border border-slate-200 dark:border-slate-700">
-                   <p className="text-slate-700 dark:text-slate-300 italic text-lg leading-relaxed">"{state.currentAnalysis.reasoning}"</p>
-                </div>
+            {state.error && (
+              <div className="bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 p-4 rounded-lg text-sm mb-6 flex items-center gap-2">
+                <Activity className="w-4 h-4" /> {state.error}
               </div>
+            )}
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <h4 className="text-sm font-bold uppercase text-blue-600 dark:text-blue-400 mb-4 flex items-center gap-2 tracking-wider"><Terminal className="w-4 h-4" /> 执行路径</h4>
-                  <ul className="space-y-4">
-                    {state.currentAnalysis.steps.map((step, i) => (
-                      <li key={i} className="flex gap-3 text-base text-slate-700 dark:text-slate-300">
-                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold shrink-0 border border-blue-200 dark:border-blue-500/20">{i+1}</span>
-                        <span className="leading-snug">{step}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <h4 className="text-sm font-bold uppercase text-fuchsia-600 dark:text-fuchsia-400 mb-4 flex items-center gap-2 tracking-wider"><BrainCircuit className="w-4 h-4" /> 智能建议</h4>
-                  <p className="text-base text-slate-700 dark:text-slate-300 leading-relaxed">{state.currentAnalysis.advice}</p>
-                </div>
-              </div>
-
-              <div className="flex flex-col md:flex-row justify-end gap-4 pt-6 border-t border-slate-100 dark:border-slate-700/50">
-                 <Button variant="outline" onClick={startNewTask} className="w-full md:w-auto"><RotateCcw className="w-5 h-5 mr-2 inline" /> 重新评估</Button>
-                 <Button onClick={handleSaveTask} className="w-full md:w-auto"><Save className="w-5 h-5 mr-2 inline" /> 存入矩阵</Button>
-              </div>
-            </div>
+            <Button 
+              className="w-full text-lg h-12 shadow-xl shadow-blue-500/20" 
+              onClick={handleStartAssessment} 
+              disabled={!inputName || !inputTime}
+              isLoading={isLoading}
+            >
+               开始评估 <ArrowRight className="ml-2 w-5 h-5" />
+            </Button>
           </Card>
+          <div className="text-center mt-8">
+            <button onClick={() => navigateTo('dashboard')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-medium transition-colors">
+              返回看板
+            </button>
+          </div>
         </div>
-      )}
-    </div>
-  );
+      );
+    }
+
+    if (state.wizardStep === 'assessment') {
+      return (
+        <div className="max-w-xl mx-auto w-full animate-in fade-in slide-in-from-right-8 duration-500">
+           <div className="flex items-center justify-between mb-6">
+             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">任务评估</h2>
+             <span className="text-sm font-mono bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full text-slate-500">AI Generated</span>
+           </div>
+           
+           <div className="space-y-4 mb-8">
+             {state.currentQuestions.map((q, idx) => (
+               <div key={q.id} className="bg-white dark:bg-[#1e293b] p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-300">
+                 <div className="flex justify-between items-center gap-4">
+                   <span className="font-medium text-lg text-slate-800 dark:text-slate-200 leading-relaxed">{q.text}</span>
+                   <div className="flex gap-2 shrink-0">
+                     <button 
+                       onClick={() => toggleAnswer(idx.toString(), true)}
+                       className={`w-12 h-12 rounded-lg font-bold transition-all flex items-center justify-center border-2
+                         ${state.currentAnswers[idx.toString()] === true 
+                           ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105' 
+                           : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:border-blue-300'}`}
+                     >
+                       是
+                     </button>
+                     <button 
+                       onClick={() => toggleAnswer(idx.toString(), false)}
+                       className={`w-12 h-12 rounded-lg font-bold transition-all flex items-center justify-center border-2
+                         ${state.currentAnswers[idx.toString()] === false 
+                           ? 'bg-slate-700 border-slate-700 text-white shadow-lg scale-105' 
+                           : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-400'}`}
+                     >
+                       否
+                     </button>
+                   </div>
+                 </div>
+               </div>
+             ))}
+           </div>
+
+           {state.error && (
+              <div className="bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 p-4 rounded-lg text-sm mb-6">
+                {state.error}
+              </div>
+           )}
+
+           <div className="flex gap-4">
+              <Button variant="secondary" onClick={() => setState(prev => ({ ...prev, wizardStep: 'input' }))} className="flex-1">
+                上一步
+              </Button>
+              <Button 
+                className="flex-[2] text-lg shadow-xl shadow-blue-500/20" 
+                onClick={handleAnalyze}
+                disabled={Object.keys(state.currentAnswers).length < state.currentQuestions.length}
+                isLoading={isLoading}
+              >
+                <Sparkles className="w-5 h-5 mr-2" /> 生成决策分析
+              </Button>
+           </div>
+        </div>
+      );
+    }
+
+    if (state.wizardStep === 'analyzing') {
+      // Enhanced Thinking Animation
+      return (
+        <div className="max-w-md mx-auto w-full text-center pt-10 animate-in fade-in duration-700">
+           <div className="relative w-32 h-32 mx-auto mb-8">
+              <div className="absolute inset-0 border-4 border-slate-100 dark:border-slate-800 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <BrainCircuit className="w-12 h-12 text-blue-500 animate-pulse" />
+              </div>
+           </div>
+           <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4 animate-pulse">
+             AI 正在思考
+           </h3>
+           <div className="h-8 overflow-hidden relative">
+             {THINKING_MESSAGES.map((msg, idx) => (
+                <p 
+                  key={idx} 
+                  className={`absolute w-full text-slate-500 dark:text-slate-400 transition-all duration-500 transform
+                    ${idx === thinkingStep ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}
+                  `}
+                >
+                  {msg}
+                </p>
+             ))}
+           </div>
+        </div>
+      );
+    }
+
+    if (state.wizardStep === 'result' && state.currentAnalysis && state.currentTaskInput) {
+      const previewTask: Task = {
+        id: 'preview',
+        name: state.currentTaskInput.name,
+        estimatedTime: state.currentTaskInput.estimatedTime,
+        createdAt: Date.now(),
+        isCompleted: false,
+        ...state.currentAnalysis
+      };
+
+      return (
+        <div className="max-w-3xl mx-auto w-full h-full flex flex-col animate-in zoom-in-95 duration-300 pb-8">
+           <div className="flex items-center justify-between mb-6">
+             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">分析报告</h2>
+             <div className="flex gap-2">
+                <Button variant="secondary" onClick={startNewTask}>
+                  放弃
+                </Button>
+                <Button onClick={handleSaveTask} className="shadow-lg shadow-blue-500/20">
+                  <Save className="w-4 h-4 mr-2" /> 保存到看板
+                </Button>
+             </div>
+           </div>
+           
+           <div className="flex-1 overflow-hidden bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl relative">
+             {/* Re-use the detail view but embedded */}
+             <div className="h-full p-6 overflow-y-auto custom-scrollbar">
+                {/* Reuse renderTaskDetail logic but flatten the card structure slightly */}
+                <div className="flex justify-between items-start mb-6">
+                   <h3 className="text-2xl font-bold leading-tight mr-2 text-slate-900 dark:text-white">{previewTask.name}</h3>
+                   <span className={`px-4 py-1.5 rounded-full font-bold text-sm border ${
+                      previewTask.quadrant === 'Do' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                      previewTask.quadrant === 'Plan' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                      previewTask.quadrant === 'Delegate' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-rose-100 text-rose-700 border-rose-200'
+                   }`}>
+                     {previewTask.quadrant}
+                   </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                   <div className="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <div className="text-xs text-slate-500 uppercase font-bold mb-2">分析理由</div>
+                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{previewTask.reasoning}</p>
+                   </div>
+                    <div className="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <div className="text-xs text-slate-500 uppercase font-bold mb-2">核心建议</div>
+                      {/* Enhanced Advice Display in Result View */}
+                      <p className="text-slate-800 dark:text-indigo-200 font-medium leading-relaxed">{previewTask.advice}</p>
+                   </div>
+                </div>
+
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                   <h4 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                     <ListTodo className="w-5 h-5 text-blue-500"/> 推荐执行步骤
+                   </h4>
+                   <div className="space-y-3">
+                      {previewTask.steps.map((s, i) => (
+                        <div key={i} className="flex items-start gap-4 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold shrink-0">{i+1}</span>
+                           <span className="text-slate-700 dark:text-slate-300">{s}</span>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+             </div>
+           </div>
+        </div>
+      );
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-200 flex flex-col selection:bg-blue-500/30 font-sans antialiased transition-colors duration-300">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0f172a] transition-colors duration-300 font-sans">
       {/* Header */}
-      <header className="w-full border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-[#0f172a]/95 backdrop-blur-sm sticky top-0 z-40 transition-colors duration-300">
-        <div className="w-full px-4 md:px-6 py-3 md:py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-40 w-full backdrop-blur-md bg-white/70 dark:bg-[#0f172a]/80 border-b border-slate-200 dark:border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateTo('dashboard')}>
-            <div className="bg-gradient-to-br from-blue-600 to-cyan-500 p-2 rounded-lg shadow-lg shadow-blue-500/20">
-               <BrainCircuit className="w-5 h-5 md:w-6 md:h-6 text-white" />
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-2 rounded-lg shadow-lg shadow-blue-500/20">
+              <BrainCircuit className="w-6 h-6" />
             </div>
-            <div>
-               <h1 className="text-lg md:text-xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
-                MATRIX <span className="text-blue-600 dark:text-blue-400">AI</span>
-              </h1>
-              <span className="text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Strategy System</span>
-            </div>
+            <h1 className="text-xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
+              Matrix <span className="font-light">AI</span>
+            </h1>
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-2 md:gap-4">
              <button 
-               onClick={toggleTheme}
-               className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-               title="Toggle Theme"
+               onClick={toggleTheme} 
+               className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
              >
                {state.theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
              </button>
-             {state.view !== 'settings' && (
-               <button 
-                onClick={() => navigateTo('settings')}
-                className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                title="Settings"
-              >
-                <Settings className="w-5 h-5" />
-               </button>
-             )}
+             <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+             <button 
+               onClick={() => navigateTo('settings')}
+               className={`p-2 rounded-full transition-all ${state.view === 'settings' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400'}`}
+             >
+               <Settings className="w-5 h-5" />
+             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 w-full p-4 md:p-6 max-w-[1920px] mx-auto">
-        {state.view === 'dashboard' ? renderDashboard() : 
-         state.view === 'wizard' ? renderWizard() : 
-         state.view === 'stats' ? renderStats() :
-         renderSettings()}
+      {/* Main Content */}
+      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 relative">
+        {state.view === 'dashboard' && renderDashboard()}
+        {state.view === 'wizard' && (
+           <div className="h-full flex flex-col justify-center py-10">
+             {renderWizard()}
+           </div>
+        )}
+        {state.view === 'settings' && renderSettings()}
+        {state.view === 'stats' && renderStats()}
       </main>
     </div>
   );

@@ -199,34 +199,51 @@ export const analyzeTaskWithGemini = async (
 ): Promise<AnalysisResult> => {
   
   const qaPairs = questions.map((q, index) => `问: ${q} 答: ${answers[index] ? '是' : '否'}`).join('\n');
-  const userContextStr = settings.userContext ? `当前用户角色: ${settings.userContext}` : "";
-  const customInstruction = settings.customPrompt ? `额外指令: ${settings.customPrompt}` : "";
+  const userContextStr = settings.userContext ? `当前用户职业/角色: ${settings.userContext}` : "";
+  const customInstruction = settings.customPrompt ? `用户特别偏好: ${settings.customPrompt}` : "";
 
+  // 增强版 Prompt，强调方法论和深度建议
   const basePrompt = `
+    # Role
+    你是一位拥有20年经验的高级战略顾问和效率专家。请基于艾森豪威尔矩阵，对用户任务进行深度剖析。
+
+    # Inputs
     任务: "${task.name}"
     截止日期: "${task.estimatedTime}"
-    用户问答背景:
+    用户评估回答:
     ${qaPairs}
+    
     ${userContextStr}
     ${customInstruction}
 
-    请将任务分类到艾森豪威尔矩阵 (Eisenhower Matrix)。
-    请提供具体的任务拆解步骤（3-5步）和战略建议。
+    # Goals
+    1. **精准分类**: 判断任务象限。
+    2. **深度策略 (Advice - 核心部分)**: 
+       - 请不要只给空泛的建议。用户需要知道**具体该怎么做**。
+       - 必须提供一个具体的**思维模型**或**方法论** (例如: PDCA循环, 帕累托法则, 5W1H, 沟通漏斗, 快速原型, 批处理等)。
+       - 指出执行过程中可能的**陷阱**或**风险**。
+       - 语言要一针见血，像一位严厉但智慧的导师。
+    3. **行动拆解**: 3-5 个可立即执行的原子步骤。
+
+    # Output Rules
+    - 语言: 中文
+    - 输出格式: JSON
+    - advice 字段: 长度适中，必须包含【推荐方法】和【风险预警】。
   `;
 
   try {
     if (settings.aiProvider === 'siliconflow') {
       // SiliconFlow Logic
-      const systemPrompt = `你是一个高效能专家。请仅输出 JSON 格式，不要包含其他废话。
+      const systemPrompt = `你是一个高级战略顾问。请仅输出 JSON 格式，不要包含 Markdown 标记。
       
       JSON 结构必须严格如下:
       {
         "isImportant": boolean,
         "isUrgent": boolean,
         "quadrantName": "Do" | "Plan" | "Delegate" | "Eliminate",
-        "reasoning": "分类理由(中文)",
+        "reasoning": "分类理由(简练)",
         "steps": ["步骤1", "步骤2"...],
-        "advice": "战略建议(中文)"
+        "advice": "深度建议：包含思维模型、执行方法论和风险预警。"
       }`;
 
       const result = await retry(() => callSiliconFlow(
@@ -291,8 +308,7 @@ export const analyzeTaskWithGemini = async (
   }
 };
 
-// Re-export purely for naming compatibility if needed elsewhere, though functionality is merged.
+// Re-export purely for naming compatibility if needed elsewhere
 export const testGeminiConnection = async (apiKey: string) => {
-  // Legacy wrapper, better to use testAIConnection
   return testAIConnection({ geminiApiKey: apiKey, aiProvider: 'gemini' } as UserSettings);
 };
