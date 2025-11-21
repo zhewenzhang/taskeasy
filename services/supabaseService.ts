@@ -61,6 +61,14 @@ export const supabaseService = {
     if (error) throw error;
   },
 
+  updateTask: async (taskId: string, updates: Partial<Task>, settings: UserSettings): Promise<void> => {
+    const client = getClient(settings);
+    if (!client) throw new Error("Supabase not configured");
+
+    const { error } = await client.from('tasks').update(updates).eq('id', taskId);
+    if (error) throw error;
+  },
+
   deleteTask: async (taskId: string, settings: UserSettings): Promise<void> => {
     const client = getClient(settings);
     if (!client) throw new Error("Supabase not configured");

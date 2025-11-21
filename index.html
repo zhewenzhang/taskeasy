@@ -1,35 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Matrix AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Matrix AI - 智能任务矩阵</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              slate: {
+                850: '#1e293b', 
+              }
+            }
+          }
+        }
+      }
+    </script>
     <style>
-      body {
-        background-color: #0f172a; /* Slate 900 */
-        color: #e2e8f0;
-        font-family: 'Inter', sans-serif;
+      /* Smooth theme transition */
+      html, body {
+        transition-property: background-color, border-color, color, fill, stroke;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 300ms;
       }
-      .font-mono {
-        font-family: 'JetBrains Mono', monospace;
-      }
+      
       /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
       }
-      ::-webkit-scrollbar-track {
-        background: #0f172a;
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
       }
-      ::-webkit-scrollbar-thumb {
-        background: #334155;
-        border-radius: 4px;
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: rgba(156, 163, 175, 0.3);
+        border-radius: 3px;
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #475569;
+      .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: rgba(71, 85, 105, 0.4);
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(156, 163, 175, 0.5);
       }
     </style>
   <script type="importmap">
@@ -45,7 +66,7 @@
 }
 </script>
 </head>
-  <body>
+  <body class="bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-200 font-sans antialiased overflow-x-hidden">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

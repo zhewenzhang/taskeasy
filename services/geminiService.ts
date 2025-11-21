@@ -8,11 +8,11 @@ const MODEL_NAME = 'gemini-2.5-flash';
  * Initialize GoogleGenAI with the key from settings, or fallback to env.
  */
 const getAIClient = (settings: UserSettings) => {
-  // Use settings key first, then process.env.API_KEY
-  const apiKey = settings.geminiApiKey || process.env.API_KEY;
+  // The API key must be obtained exclusively from the environment variable process.env.API_KEY
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
-    throw new Error("API Key is missing. Please configure it in Settings.");
+    throw new Error("API Key is missing from environment variables.");
   }
   return new GoogleGenAI({ apiKey });
 };

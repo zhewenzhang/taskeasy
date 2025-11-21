@@ -30,6 +30,8 @@ export interface Task extends AnalysisResult {
   name: string;
   estimatedTime: string;
   createdAt: number;
+  isCompleted?: boolean;
+  completedAt?: number;
 }
 
 export interface UserSettings {
@@ -44,7 +46,8 @@ export interface UserSettings {
 }
 
 export interface AppState {
-  view: 'dashboard' | 'wizard' | 'settings'; 
+  theme: 'light' | 'dark';
+  view: 'dashboard' | 'wizard' | 'settings' | 'stats'; 
   wizardStep: 'input' | 'assessment' | 'analyzing' | 'result';
   currentTaskInput: TaskInput | null;
   currentQuestions: Question[];

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Task, QuadrantType } from '../types';
-import { AlertCircle, Calendar, Trash2, CheckCircle2, Clock } from 'lucide-react';
+import { AlertCircle, Calendar, Trash2, CheckCircle2, Clock, Check } from 'lucide-react';
 
 interface MatrixProps {
   tasks: Task[];
@@ -12,40 +12,72 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
   
   const getTasksForQuadrant = (type: QuadrantType) => tasks.filter(t => t.quadrant === type);
 
-  const renderQuadrant = (type: QuadrantType, title: string, subTitle: string, icon: React.ReactNode, colorClass: string, borderClass: string, bgClass: string) => {
+  const renderQuadrant = (
+    type: QuadrantType, 
+    title: string, 
+    subTitle: string, 
+    icon: React.ReactNode, 
+    styles: {
+      text: string;
+      bg: string;
+      border: string;
+      cardBg: string;
+      iconBg: string;
+    }
+  ) => {
     const quadrantTasks = getTasksForQuadrant(type);
     
     return (
-      <div className={`relative p-6 border-slate-800 flex flex-col h-full transition-all duration-300 ${borderClass} ${bgClass}`}>
+      <div className={`relative p-4 md:p-6 flex flex-col h-full min-h-[300px] md:min-h-0 transition-all duration-300 ${styles.bg} ${styles.border}`}>
         {/* Header Area */}
-        <div className="flex items-center gap-4 mb-6 opacity-90 shrink-0">
-          <div className={`p-3 rounded-xl bg-slate-950 border border-slate-800 shadow-sm ${colorClass}`}>
+        <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6 opacity-100 shrink-0">
+          <div className={`p-2 md:p-3 rounded-xl shadow-sm ${styles.iconBg} ${styles.text}`}>
              {icon}
           </div>
           <div>
-            <h4 className={`font-bold text-xl tracking-tight ${colorClass}`}>{title}</h4>
-            <p className="text-sm text-slate-500 font-medium">{subTitle}</p>
+            <h4 className={`font-bold text-lg md:text-xl tracking-tight ${styles.text}`}>{title}</h4>
+            <p className="text-xs md:text-sm text-slate-500 font-medium dark:text-slate-400">{subTitle}</p>
           </div>
         </div>
         
         {/* Task List Area */}
-        <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto space-y-3 pr-1 md:pr-2 custom-scrollbar pb-4 md:pb-0">
           {quadrantTasks.length === 0 && (
-            <div className="h-full flex items-center justify-center text-slate-600 text-base italic border-2 border-dashed border-slate-800/50 rounded-xl bg-slate-900/20">
+            <div className="h-32 md:h-full flex items-center justify-center text-slate-400 dark:text-slate-600 text-sm italic border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-white/50 dark:bg-slate-900/20">
               暂无任务
             </div>
           )}
           {quadrantTasks.map(task => (
             <div 
               key={task.id}
-              onClick={() => onTaskClick && onTaskClick(task)}
-              className="group cursor-pointer bg-slate-800 border border-slate-700/50 p-4 rounded-lg shadow-sm hover:bg-slate-700 hover:border-slate-600 hover:shadow-md transition-all duration-200"
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent bubbling
+                onTaskClick && onTaskClick(task);
+              }}
+              className={`group cursor-pointer border p-3 md:p-4 rounded-xl shadow-sm transition-all duration-200 relative overflow-hidden
+                ${task.isCompleted 
+                  ? 'bg-slate-100 dark:bg-slate-900/30 border-slate-200 dark:border-slate-800 opacity-75 grayscale hover:grayscale-0 hover:opacity-100' 
+                  : `${styles.cardBg} border-slate-200 dark:border-slate-700 hover:shadow-md hover:-translate-y-0.5`
+                }
+              `}
             >
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-slate-200 text-base font-medium leading-snug line-clamp-2 group-hover:text-white transition-colors">{task.name}</span>
+              {task.isCompleted && (
+                <div className="absolute top-0 right-0 p-1.5 bg-emerald-100 dark:bg-emerald-500/10 rounded-bl-lg">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500" />
+                </div>
+              )}
+              
+              <div className="flex justify-between items-start mb-2 pr-4">
+                <span className={`text-sm md:text-base font-semibold leading-snug line-clamp-2 transition-colors 
+                  ${task.isCompleted 
+                    ? 'text-slate-500 line-through decoration-slate-400' 
+                    : 'text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white'
+                  }`}>
+                  {task.name}
+                </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 font-medium bg-slate-900/50 inline-flex px-2 py-1 rounded">
-                <Clock className="w-3.5 h-3.5" /> 
+              <div className="flex items-center gap-1.5 text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-medium bg-slate-200/50 dark:bg-slate-900/50 inline-flex px-2 py-1 rounded-md">
+                <Clock className="w-3 h-3" /> 
                 <span>截止: {task.estimatedTime}</span>
               </div>
             </div>
@@ -56,17 +88,22 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
   };
 
   return (
-    <div className="w-full h-[78vh] relative bg-[#1e293b] border border-slate-700 rounded-2xl overflow-hidden shadow-2xl">
-      <div className="grid grid-cols-2 grid-rows-2 h-full w-full">
+    // Responsive Container: Standard block on mobile, Fixed height on desktop
+    <div className="w-full h-auto md:h-[calc(100vh-180px)] min-h-[600px] relative bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none flex flex-col">
+      <div className="grid grid-cols-1 md:grid-cols-2 grid-rows-4 md:grid-rows-2 h-full w-full">
         {/* Q1: Do */}
         {renderQuadrant(
           QuadrantType.DO, 
           "马上做 (Do)", 
           "重要且紧急", 
-          <AlertCircle className="w-7 h-7" />, 
-          "text-blue-400",
-          "border-r border-b",
-          "bg-slate-900/50 hover:bg-slate-900/80"
+          <AlertCircle className="w-6 h-6 md:w-7 md:h-7" />, 
+          {
+            text: "text-blue-600 dark:text-blue-400",
+            bg: "bg-blue-50/30 dark:bg-slate-900/50",
+            border: "border-b border-slate-200 dark:border-slate-800 md:border-r",
+            cardBg: "bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-700",
+            iconBg: "bg-white dark:bg-slate-950 border border-blue-100 dark:border-slate-800"
+          }
         )}
 
         {/* Q2: Plan */}
@@ -74,10 +111,14 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
           QuadrantType.PLAN, 
           "计划做 (Plan)", 
           "重要不紧急", 
-          <Calendar className="w-7 h-7" />, 
-          "text-emerald-400",
-          "border-b",
-          "bg-slate-900/30 hover:bg-slate-900/60"
+          <Calendar className="w-6 h-6 md:w-7 md:h-7" />, 
+          {
+            text: "text-emerald-600 dark:text-emerald-400",
+            bg: "bg-emerald-50/30 dark:bg-slate-900/30",
+            border: "border-b border-slate-200 dark:border-slate-800",
+            cardBg: "bg-white dark:bg-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700",
+            iconBg: "bg-white dark:bg-slate-950 border border-emerald-100 dark:border-slate-800"
+          }
         )}
 
         {/* Q3: Delegate */}
@@ -85,10 +126,14 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
           QuadrantType.DELEGATE, 
           "授权做 (Delegate)", 
           "不重要紧急", 
-          <CheckCircle2 className="w-7 h-7" />, 
-          "text-amber-400",
-          "border-r",
-          "bg-slate-900/30 hover:bg-slate-900/60"
+          <CheckCircle2 className="w-6 h-6 md:w-7 md:h-7" />, 
+          {
+            text: "text-amber-600 dark:text-amber-400",
+            bg: "bg-amber-50/30 dark:bg-slate-900/30",
+            border: "border-b border-slate-200 dark:border-slate-800 md:border-b-0 md:border-r",
+            cardBg: "bg-white dark:bg-slate-800 hover:border-amber-300 dark:hover:border-amber-700",
+            iconBg: "bg-white dark:bg-slate-950 border border-amber-100 dark:border-slate-800"
+          }
         )}
 
         {/* Q4: Eliminate */}
@@ -96,10 +141,14 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
           QuadrantType.ELIMINATE, 
           "减少做 (Eliminate)", 
           "不重要不紧急", 
-          <Trash2 className="w-7 h-7" />, 
-          "text-rose-400",
-          "",
-          "bg-slate-900/10 hover:bg-slate-900/40"
+          <Trash2 className="w-6 h-6 md:w-7 md:h-7" />, 
+          {
+            text: "text-rose-600 dark:text-rose-400",
+            bg: "bg-rose-50/30 dark:bg-slate-900/10",
+            border: "",
+            cardBg: "bg-white dark:bg-slate-800 hover:border-rose-300 dark:hover:border-rose-700",
+            iconBg: "bg-white dark:bg-slate-950 border border-rose-100 dark:border-slate-800"
+          }
         )}
       </div>
     </div>
