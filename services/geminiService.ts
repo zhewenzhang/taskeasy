@@ -28,6 +28,7 @@ const getModelName = (settings: UserSettings) => {
 
 /**
  * Helper to retry async functions (like API calls) with exponential backoff.
+ * Also translates raw API errors into friendly Chinese messages.
  */
 async function retry<T>(
   fn: () => Promise<T>, 
@@ -41,20 +42,54 @@ async function retry<T>(
       return await fn();
     } catch (error: any) {
       lastError = error;
-      console.warn(`API Attempt ${i + 1} failed:`, error);
       
-      const status = error?.status || error?.response?.status;
+      // Extract status code if available
+      const status = error?.status || error?.response?.status || error?.code;
+      
+      // If it's a 4xx error (client error) that isn't 429 (Too Many Requests), don't retry.
       if (status && status >= 400 && status < 500 && status !== 429) {
-        throw error;
+        break; // Break loop to handle error processing immediately
       }
 
+      // Log warning for retries
       if (i < retries - 1) {
+        console.warn(`API Attempt ${i + 1} failed, retrying...`, error);
         const delay = baseDelay * Math.pow(2, i);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
-  throw lastError;
+  
+  // Error Translation Logic
+  if (lastError) {
+    const msg = lastError.message || JSON.stringify(lastError);
+    const status = lastError.status || lastError.response?.status || lastError.code;
+
+    // Case 1: 429 Resource Exhausted (Quota/Rate Limit)
+    if (status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+      throw new Error("API 调用频率受限 (429)。免费版 API Key 每分钟请求次数有限，或您的配额已用尽。请休息几分钟后再试。");
+    }
+    
+    // Case 2: 403 Permission Denied (Invalid Key or Service Disabled)
+    if (status === 403 || msg.includes('PERMISSION_DENIED') || msg.includes('API key not valid')) {
+       throw new Error("API Key 无效或无权限 (403)。请检查 Key 是否正确，或是否已在 Google AI Studio 中启用了对应项目。");
+    }
+
+    // Case 3: 400 Bad Request
+    if (status === 400 || msg.includes('INVALID_ARGUMENT')) {
+       throw new Error("请求格式错误 (400)。请检查输入内容是否过长或包含特殊字符。");
+    }
+    
+    // Case 4: 500 Server Error
+    if (status >= 500) {
+      throw new Error("Google 服务端暂时不可用 (5xx)。请稍后重试。");
+    }
+    
+    // Fallback: throw the original error if we can't match it
+    throw lastError;
+  }
+
+  throw new Error("Unknown error occurred during API call.");
 }
 
 /**
@@ -138,7 +173,7 @@ export const generateAssessmentQuestions = async (task: TaskInput, settings: Use
     ];
   } catch (error) {
     console.error("Error generating questions:", error);
-    throw error; // Let UI handle the error display
+    throw error; // UI will now catch the translated user-friendly error
   }
 };
 
