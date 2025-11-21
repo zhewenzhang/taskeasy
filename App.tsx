@@ -1,15 +1,18 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, TaskInput, Question, Task, UserSettings, QuadrantType } from './types';
-import { generateAssessmentQuestions, analyzeTaskWithGemini, testGeminiConnection } from './services/geminiService';
+import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection } from './services/geminiService';
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
+  aiProvider: 'gemini',
   geminiApiKey: "",
   aiModel: 'flash',
+  siliconFlowApiKey: "",
+  siliconFlowModel: "deepseek-ai/DeepSeek-V3",
   creativity: 0.7,
   customPrompt: "",
   userContext: "",
@@ -27,6 +30,9 @@ const App: React.FC = () => {
     // Merge default settings with saved to ensure new fields exist
     const parsedSettings = savedSettings ? JSON.parse(savedSettings) : {};
     const mergedSettings = { ...DEFAULT_SETTINGS, ...parsedSettings };
+    // Ensure silicon model has default if undefined in old saves
+    if(!mergedSettings.siliconFlowModel) mergedSettings.siliconFlowModel = "deepseek-ai/DeepSeek-V3";
+    if(!mergedSettings.aiProvider) mergedSettings.aiProvider = "gemini";
 
     return {
       theme: savedTheme,
@@ -192,10 +198,9 @@ const App: React.FC = () => {
     setConnectionStatus(success ? 'success' : 'failed');
   };
 
-  const handleTestGeminiConnection = async () => {
+  const handleTestAIConnection = async () => {
     setAiConnectionStatus('testing');
-    // Pass the key from tempSettings to test what the user just typed
-    const success = await testGeminiConnection(tempSettings.geminiApiKey);
+    const success = await testAIConnection(tempSettings);
     setAiConnectionStatus(success ? 'success' : 'failed');
   }
 
@@ -548,88 +553,130 @@ const App: React.FC = () => {
 
       <div className="grid grid-cols-1 gap-8">
         {/* AI Configuration */}
-        <Card title="AI 模型高级配置" actions={<Cpu className="text-blue-500 dark:text-blue-400 w-5 h-5" />}>
+        <Card title="AI 服务提供商配置" actions={<Cpu className="text-blue-500 dark:text-blue-400 w-5 h-5" />}>
           <div className="space-y-6">
             
-            {/* Gemini Help Instructions */}
-            <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300">
-               <div className="flex items-center gap-2 mb-2 text-blue-700 dark:text-blue-400 font-bold">
-                 <HelpCircle className="w-4 h-4" /> 如何获取 Gemini API Key？
-               </div>
-               <ol className="list-decimal list-inside space-y-1.5 text-xs md:text-sm ml-1 opacity-90">
-                 <li>访问 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline text-blue-600 hover:text-blue-500 font-medium">Google AI Studio</a> 并登录您的 Google 账号。</li>
-                 <li>点击左上角的 <strong>Get API key</strong> 按钮。</li>
-                 <li>点击 <strong>Create API key</strong> (通常建议并在新项目中创建)。</li>
-                 <li>复制生成的以 <code>AIzaSy...</code> 开头的密钥并填入下方。</li>
-               </ol>
+            {/* Provider Selection Tabs */}
+            <div className="grid grid-cols-2 gap-4 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
+              <button 
+                onClick={() => setTempSettings({...tempSettings, aiProvider: 'gemini'})}
+                className={`flex flex-col items-center justify-center py-3 rounded-md text-sm font-medium transition-all ${tempSettings.aiProvider === 'gemini' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              >
+                <span className="flex items-center gap-2"><Zap className="w-4 h-4" /> Google Gemini</span>
+              </button>
+              <button 
+                onClick={() => setTempSettings({...tempSettings, aiProvider: 'siliconflow'})}
+                className={`flex flex-col items-center justify-center py-3 rounded-md text-sm font-medium transition-all ${tempSettings.aiProvider === 'siliconflow' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              >
+                <span className="flex items-center gap-2"><Box className="w-4 h-4" /> SiliconFlow (DeepSeek)</span>
+              </button>
             </div>
 
-             {/* API Key Input */}
-             <InputField
-               label="Gemini API Key"
-               type="password"
-               placeholder="AIzaSy..."
-               value={tempSettings.geminiApiKey}
-               onChange={(e) => setTempSettings({...tempSettings, geminiApiKey: e.target.value})}
-               helperText="请输入您的 Google Gemini API Key。如留空，则尝试使用系统环境变量。"
-             />
-
-             {/* Status Indicator & Test */}
-             <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex items-center gap-3">
-                   <div className={`p-2 rounded-full ${tempSettings.geminiApiKey ? 'bg-blue-100 dark:bg-blue-500/20' : 'bg-slate-200 dark:bg-slate-800'}`}>
-                     <KeyRound className={`w-4 h-4 ${tempSettings.geminiApiKey ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'}`} />
+            {/* GEMINI SETTINGS */}
+            {tempSettings.aiProvider === 'gemini' && (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-6">
+                 <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300">
+                   <div className="flex items-center gap-2 mb-2 text-blue-700 dark:text-blue-400 font-bold">
+                     <HelpCircle className="w-4 h-4" /> Google Gemini API
                    </div>
-                   <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                        {tempSettings.geminiApiKey ? '使用自定义 Key' : '默认配置 (Environment)'}
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        {tempSettings.geminiApiKey ? '已输入 Key' : '未检测到输入，将使用系统默认值'}
-                      </span>
-                   </div>
+                   <ol className="list-decimal list-inside space-y-1.5 text-xs md:text-sm ml-1 opacity-90">
+                     <li>需要访问 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline text-blue-600 hover:text-blue-500">Google AI Studio</a> 获取 Key。</li>
+                     <li>免费版有每分钟请求限制 (RPM Limit)。</li>
+                   </ol>
                 </div>
-                <div className="flex items-center gap-3">
-                   {aiConnectionStatus === 'success' && <span className="text-emerald-500 dark:text-emerald-400 text-sm font-bold">连接正常</span>}
-                   {aiConnectionStatus === 'failed' && <span className="text-rose-500 dark:text-rose-400 text-sm font-bold">连接异常</span>}
-                   <Button variant="outline" onClick={handleTestGeminiConnection} isLoading={aiConnectionStatus === 'testing'} className="text-xs h-8 px-3">
-                     测试连通性
-                   </Button>
-                </div>
-             </div>
 
-             {/* Model Selection */}
-             <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-400 mb-3 flex items-center gap-2">
-                  <Zap className="w-4 h-4" /> 思考模型 (Model Selection)
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div 
-                     onClick={() => setTempSettings({ ...tempSettings, aiModel: 'flash' })}
-                     className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${tempSettings.aiModel === 'flash' 
-                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                       : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-600'}`}
-                   >
-                      <div className="flex items-center gap-2 mb-2">
-                         <div className={`w-3 h-3 rounded-full ${tempSettings.aiModel === 'flash' ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
-                         <span className="font-bold text-slate-800 dark:text-slate-200">Gemini 2.5 Flash</span>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">极速响应，适合大多数常规任务分类。</p>
-                   </div>
+                 <InputField
+                   label="Gemini API Key"
+                   type="password"
+                   placeholder="AIzaSy..."
+                   value={tempSettings.geminiApiKey}
+                   onChange={(e) => setTempSettings({...tempSettings, geminiApiKey: e.target.value})}
+                 />
 
-                   <div 
-                     onClick={() => setTempSettings({ ...tempSettings, aiModel: 'pro' })}
-                     className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${tempSettings.aiModel === 'pro' 
-                       ? 'border-fuchsia-500 bg-fuchsia-50 dark:bg-fuchsia-900/20' 
-                       : 'border-slate-200 dark:border-slate-700 hover:border-fuchsia-300 dark:hover:border-slate-600'}`}
-                   >
-                      <div className="flex items-center gap-2 mb-2">
-                         <div className={`w-3 h-3 rounded-full ${tempSettings.aiModel === 'pro' ? 'bg-fuchsia-500' : 'bg-slate-300'}`}></div>
-                         <span className="font-bold text-slate-800 dark:text-slate-200">Gemini 3 Pro</span>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">深度推理，提供更具战略性的拆解建议。</p>
+                 <div>
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-400 mb-3 flex items-center gap-2">
+                      <Zap className="w-4 h-4" /> 模型选择
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div 
+                         onClick={() => setTempSettings({ ...tempSettings, aiModel: 'flash' })}
+                         className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${tempSettings.aiModel === 'flash' 
+                           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                           : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-600'}`}
+                       >
+                          <div className="flex items-center gap-2 mb-2">
+                             <span className="font-bold text-slate-800 dark:text-slate-200">Gemini 2.5 Flash</span>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">极速响应，高性价比。</p>
+                       </div>
+
+                       <div 
+                         onClick={() => setTempSettings({ ...tempSettings, aiModel: 'pro' })}
+                         className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${tempSettings.aiModel === 'pro' 
+                           ? 'border-fuchsia-500 bg-fuchsia-50 dark:bg-fuchsia-900/20' 
+                           : 'border-slate-200 dark:border-slate-700 hover:border-fuchsia-300 dark:hover:border-slate-600'}`}
+                       >
+                          <div className="flex items-center gap-2 mb-2">
+                             <span className="font-bold text-slate-800 dark:text-slate-200">Gemini 3 Pro</span>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">深度推理，更强逻辑。</p>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+            )}
+
+            {/* SILICONFLOW SETTINGS */}
+            {tempSettings.aiProvider === 'siliconflow' && (
+               <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-6">
+                  <div className="bg-purple-50/50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300">
+                    <div className="flex items-center gap-2 mb-2 text-purple-700 dark:text-purple-400 font-bold">
+                      <HelpCircle className="w-4 h-4" /> SiliconFlow (硅基流动)
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-xs md:text-sm ml-1 opacity-90">
+                      <li>注册 <a href="https://cloud.siliconflow.cn/i/VaX2Q5j8" target="_blank" rel="noreferrer" className="underline text-purple-600 hover:text-purple-500">SiliconCloud</a> 获取 API Key。</li>
+                      <li>支持 DeepSeek-V3, Qwen2.5, GLM-4 等开源模型。</li>
+                      <li><span className="font-bold text-emerald-600 dark:text-emerald-400">部分模型（如 Qwen/DeepSeek 基础版）目前免费使用。</span></li>
+                    </ol>
+                  </div>
+
+                  <InputField
+                    label="SiliconFlow API Key"
+                    type="password"
+                    placeholder="sk-..."
+                    value={tempSettings.siliconFlowApiKey}
+                    onChange={(e) => setTempSettings({...tempSettings, siliconFlowApiKey: e.target.value})}
+                  />
+
+                  <InputField
+                    label="模型名称 (Model ID)"
+                    placeholder="deepseek-ai/DeepSeek-V3"
+                    value={tempSettings.siliconFlowModel}
+                    onChange={(e) => setTempSettings({...tempSettings, siliconFlowModel: e.target.value})}
+                    helperText="输入 SiliconCloud 上可用的模型 ID，例如: deepseek-ai/DeepSeek-V3, Qwen/Qwen2.5-72B-Instruct, THUDM/glm-4-9b-chat"
+                  />
+                  
+                   <div className="flex gap-2 flex-wrap">
+                      {["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct", "THUDM/glm-4-9b-chat"].map(model => (
+                        <button 
+                          key={model}
+                          onClick={() => setTempSettings({...tempSettings, siliconFlowModel: model})}
+                          className="px-3 py-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-purple-100 dark:hover:bg-purple-900/30 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full transition-colors"
+                        >
+                          {model.split('/')[1]}
+                        </button>
+                      ))}
                    </div>
-                </div>
+               </div>
+            )}
+
+             {/* Connection Test Button */}
+             <div className="flex items-center gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                {aiConnectionStatus === 'success' && <span className="text-emerald-500 dark:text-emerald-400 text-sm font-bold">连接正常</span>}
+                {aiConnectionStatus === 'failed' && <span className="text-rose-500 dark:text-rose-400 text-sm font-bold">连接异常</span>}
+                <Button variant="outline" onClick={handleTestAIConnection} isLoading={aiConnectionStatus === 'testing'} className="text-xs h-9 px-4">
+                  测试 {tempSettings.aiProvider === 'gemini' ? 'Gemini' : 'SiliconFlow'} 连接
+                </Button>
              </div>
 
              {/* Temperature Slider */}
@@ -828,7 +875,9 @@ const App: React.FC = () => {
             <div className="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
           </div>
           <p className="text-lg font-medium text-slate-600 dark:text-slate-300 animate-pulse">正在构建任务决策模型...</p>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">AI 正在分析您的回答与上下文</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">
+             {state.settings.aiProvider === 'gemini' ? 'Gemini 正在思考...' : `${state.settings.siliconFlowModel?.split('/')[1] || 'AI'} 正在分析...`}
+          </p>
         </div>
       )}
 

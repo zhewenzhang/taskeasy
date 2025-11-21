@@ -34,11 +34,22 @@ export interface Task extends AnalysisResult {
   completedAt?: number;
 }
 
+export type AIProvider = 'gemini' | 'siliconflow';
+
 export interface UserSettings {
-  // Gemini
-  geminiApiKey: string; // Deprecated in UI, kept for type compatibility if needed
-  aiModel: 'flash' | 'pro'; // New: Model Selection
-  creativity: number; // New: Temperature (0.0 - 1.0)
+  // AI Provider Selection
+  aiProvider: AIProvider;
+
+  // Gemini Settings
+  geminiApiKey: string; 
+  aiModel: 'flash' | 'pro'; 
+
+  // SiliconFlow Settings (New)
+  siliconFlowApiKey: string;
+  siliconFlowModel: string; // e.g., "deepseek-ai/DeepSeek-V3"
+
+  // Common AI Settings
+  creativity: number; // Temperature (0.0 - 1.0)
   customPrompt: string;
   userContext: string; 
   
