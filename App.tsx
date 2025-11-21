@@ -287,21 +287,33 @@ const App: React.FC = () => {
   // --- Render Components ---
 
   const renderTaskDetail = (task: Task, isOverlay: boolean = false) => (
-    <Card title={isOverlay ? "任务详情" : undefined} className={`h-full border-t-4 border-t-blue-500 flex flex-col shadow-2xl ${!isOverlay ? 'border-slate-200 dark:border-slate-700' : ''}`}>
-       {/* Close button for overlay */}
-       {isOverlay && (
-         <button onClick={() => setSelectedTask(null)} className="absolute top-4 right-4 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
+    <Card title={isOverlay ? "任务详情" : undefined} className={`h-full border-t-4 border-t-blue-500 flex flex-col shadow-2xl ${!isOverlay ? 'border-slate-200 dark:border-slate-700 relative' : ''}`}>
+       {/* Controls */}
+       {isOverlay ? (
+         <button onClick={() => setSelectedTask(null)} className="absolute top-4 right-4 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full z-10">
            <X className="w-5 h-5" />
          </button>
+       ) : (
+         <div className="absolute top-3 right-3 flex gap-1 z-10">
+            <button 
+              onClick={() => deleteTask(task.id)} 
+              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+              title="删除任务"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={() => setSelectedTask(null)} 
+              className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="关闭详情"
+            >
+              <X className="w-5 h-5" />
+            </button>
+         </div>
        )}
 
-      <div className={`flex justify-between items-start mb-6 ${isOverlay ? 'mt-4' : ''}`}>
-        <h3 className={`text-xl font-bold leading-tight mr-2 ${task.isCompleted ? 'text-slate-400 line-through decoration-slate-400' : 'text-slate-900 dark:text-white'}`}>{task.name}</h3>
-        {!isOverlay && (
-          <button onClick={() => deleteTask(task.id)} className="text-slate-400 hover:text-rose-500 transition-colors p-1.5 hover:bg-rose-500/10 rounded">
-            <X className="w-5 h-5" />
-          </button>
-        )}
+      <div className={`flex justify-between items-start mb-6 ${isOverlay ? 'mt-4' : 'mt-2'} ${!isOverlay ? 'pr-20' : ''}`}>
+        <h3 className={`text-xl font-bold leading-tight ${task.isCompleted ? 'text-slate-400 line-through decoration-slate-400' : 'text-slate-900 dark:text-white'}`}>{task.name}</h3>
       </div>
       
       <div className="space-y-6 text-sm flex-1 overflow-y-auto custom-scrollbar pr-1">
@@ -418,23 +430,17 @@ const App: React.FC = () => {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 h-full relative">
-        {/* Matrix Section */}
-        <div className="lg:col-span-3 h-full">
+        {/* Matrix Section - Dynamic width based on selection */}
+        <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} h-full transition-all duration-500 ease-in-out`}>
           <Matrix tasks={state.tasks} onTaskClick={setSelectedTask} />
         </div>
 
-        {/* Desktop Sidebar Task Detail */}
-        <div className="hidden lg:block lg:col-span-1 h-full max-h-[calc(100vh-180px)] overflow-hidden">
-          {selectedTask ? (
-            renderTaskDetail(selectedTask)
-          ) : (
-            <div className="h-full border-2 border-dashed border-slate-200 dark:border-slate-700/50 rounded-xl flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8 text-center bg-slate-50/50 dark:bg-slate-800/20">
-              <LayoutGrid className="w-16 h-16 mb-6 opacity-20" />
-              <h3 className="text-lg font-medium text-slate-500 dark:text-slate-400">选择任务查看详情</h3>
-              <p className="text-sm mt-2 opacity-60 max-w-[200px]">点击左侧矩阵中的任意卡片，获取AI深度分析报告。</p>
-            </div>
-          )}
-        </div>
+        {/* Desktop Sidebar Task Detail - Only visible when task selected */}
+        {selectedTask && (
+          <div className="hidden lg:block lg:col-span-1 h-full max-h-[calc(100vh-180px)] overflow-hidden animate-in slide-in-from-right-8 fade-in duration-300">
+            {renderTaskDetail(selectedTask)}
+          </div>
+        )}
       </div>
 
       {/* Mobile/Tablet Task Detail Overlay */}
@@ -944,7 +950,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0f172a] transition-colors duration-300 font-sans">
       {/* Header */}
       <header className="sticky top-0 z-40 w-full backdrop-blur-md bg-white/70 dark:bg-[#0f172a]/80 border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="w-full px-4 md:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateTo('dashboard')}>
             <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-2 rounded-lg shadow-lg shadow-blue-500/20">
               <BrainCircuit className="w-6 h-6" />
@@ -973,7 +979,7 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 relative">
+      <main className="flex-1 w-full p-4 md:p-6 lg:p-8 relative">
         {state.view === 'dashboard' && renderDashboard()}
         {state.view === 'wizard' && (
            <div className="h-full flex flex-col justify-center py-10">
