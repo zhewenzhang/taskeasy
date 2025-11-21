@@ -36,7 +36,9 @@ export interface Task extends AnalysisResult {
 
 export interface UserSettings {
   // Gemini
-  geminiApiKey: string;
+  geminiApiKey: string; // Deprecated in UI, kept for type compatibility if needed
+  aiModel: 'flash' | 'pro'; // New: Model Selection
+  creativity: number; // New: Temperature (0.0 - 1.0)
   customPrompt: string;
   userContext: string; 
   

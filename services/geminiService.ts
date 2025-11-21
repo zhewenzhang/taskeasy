@@ -2,19 +2,28 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { AnalysisResult, QuadrantType, TaskInput, UserSettings } from "../types";
 
-const MODEL_NAME = 'gemini-2.5-flash';
+// Model Constants
+const MODEL_FLASH = 'gemini-2.5-flash';
+const MODEL_PRO = 'gemini-3-pro-preview';
 
 /**
  * Initialize GoogleGenAI with the key from settings, or fallback to env.
  */
-const getAIClient = (settings: UserSettings) => {
-  // The API key must be obtained exclusively from the environment variable process.env.API_KEY
-  const apiKey = process.env.API_KEY;
+const getAIClient = (apiKey?: string) => {
+  // Prioritize user-provided key, fallback to env, then fail
+  const keyToUse = apiKey || process.env.API_KEY;
   
-  if (!apiKey) {
-    throw new Error("API Key is missing from environment variables.");
+  if (!keyToUse) {
+    throw new Error("未检测到 API Key。请在设置中输入您的 Google Gemini API Key。");
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: keyToUse });
+};
+
+/**
+ * Helper to get the correct model string based on user settings
+ */
+const getModelName = (settings: UserSettings) => {
+  return settings.aiModel === 'pro' ? MODEL_PRO : MODEL_FLASH;
 };
 
 /**
@@ -49,11 +58,31 @@ async function retry<T>(
 }
 
 /**
+ * Test the Gemini API Connection using a specific key (e.g. from input field)
+ */
+export const testGeminiConnection = async (apiKey: string): Promise<boolean> => {
+  try {
+    const ai = getAIClient(apiKey);
+    // Use Flash for a quick ping
+    await ai.models.generateContent({
+      model: MODEL_FLASH,
+      contents: "Hello",
+    });
+    return true;
+  } catch (error) {
+    console.error("Gemini Connection Test Failed:", error);
+    return false;
+  }
+};
+
+/**
  * Step 1: Generate context-aware questions.
  */
 export const generateAssessmentQuestions = async (task: TaskInput, settings: UserSettings): Promise<string[]> => {
   try {
-    const ai = getAIClient(settings);
+    const ai = getAIClient(settings.geminiApiKey);
+    const model = getModelName(settings);
+    const temperature = settings.creativity ?? 0.7;
     
     const userContextStr = settings.userContext 
       ? `用户背景角色: "${settings.userContext}". 请根据此角色调整问题视角。` 
@@ -79,9 +108,10 @@ export const generateAssessmentQuestions = async (task: TaskInput, settings: Use
     `;
 
     const response = await retry<GenerateContentResponse>(() => ai.models.generateContent({
-      model: MODEL_NAME,
+      model: model,
       contents: prompt,
       config: {
+        temperature: temperature,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -108,15 +138,7 @@ export const generateAssessmentQuestions = async (task: TaskInput, settings: Use
     ];
   } catch (error) {
     console.error("Error generating questions:", error);
-    // Fallback if API fails completely (e.g. invalid key)
-    if ((error as Error).message.includes("API Key")) {
-      throw error;
-    }
-    return [
-      "必须在截止前完成吗？",
-      "这对长期目标重要吗？",
-      "不做会有严重后果吗？"
-    ];
+    throw error; // Let UI handle the error display
   }
 };
 
@@ -130,7 +152,9 @@ export const analyzeTaskWithGemini = async (
   settings: UserSettings
 ): Promise<AnalysisResult> => {
   
-  const ai = getAIClient(settings);
+  const ai = getAIClient(settings.geminiApiKey);
+  const model = getModelName(settings);
+  const temperature = settings.creativity ?? 0.7;
 
   const qaPairs = questions.map((q, index) => {
     return `问: ${q} 答: ${answers[index] ? '是' : '否'}`;
@@ -161,9 +185,10 @@ export const analyzeTaskWithGemini = async (
   `;
 
   const response = await retry<GenerateContentResponse>(() => ai.models.generateContent({
-    model: MODEL_NAME,
+    model: model,
     contents: prompt,
     config: {
+      temperature: temperature,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,

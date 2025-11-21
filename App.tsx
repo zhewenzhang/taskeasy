@@ -1,14 +1,16 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, TaskInput, Question, Task, UserSettings, QuadrantType } from './types';
-import { generateAssessmentQuestions, analyzeTaskWithGemini } from './services/geminiService';
+import { generateAssessmentQuestions, analyzeTaskWithGemini, testGeminiConnection } from './services/geminiService';
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2 } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   geminiApiKey: "",
+  aiModel: 'flash',
+  creativity: 0.7,
   customPrompt: "",
   userContext: "",
   supabaseUrl: "",
@@ -22,6 +24,10 @@ const App: React.FC = () => {
     const savedSettings = localStorage.getItem('matrix_ai_settings');
     const savedTheme = localStorage.getItem('matrix_ai_theme') as 'light' | 'dark' || 'dark';
     
+    // Merge default settings with saved to ensure new fields exist
+    const parsedSettings = savedSettings ? JSON.parse(savedSettings) : {};
+    const mergedSettings = { ...DEFAULT_SETTINGS, ...parsedSettings };
+
     return {
       theme: savedTheme,
       view: 'dashboard',
@@ -32,7 +38,7 @@ const App: React.FC = () => {
       currentAnalysis: null,
       error: null,
       tasks: savedTasks ? JSON.parse(savedTasks) : [],
-      settings: savedSettings ? JSON.parse(savedSettings) : DEFAULT_SETTINGS,
+      settings: mergedSettings,
       isSyncing: false
     };
   });
@@ -45,6 +51,7 @@ const App: React.FC = () => {
   // Temp state for settings form
   const [tempSettings, setTempSettings] = useState<UserSettings>(state.settings);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [aiConnectionStatus, setAiConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
 
   const isSupabaseConfigured = !!(state.settings.supabaseUrl && state.settings.supabaseKey);
 
@@ -120,6 +127,7 @@ const App: React.FC = () => {
     if (view === 'settings') {
       setTempSettings(state.settings);
       setConnectionStatus('idle');
+      setAiConnectionStatus('idle');
     }
     setState(prev => ({ ...prev, view, error: null }));
   };
@@ -183,6 +191,13 @@ const App: React.FC = () => {
     const success = await supabaseService.testConnection(tempSettings);
     setConnectionStatus(success ? 'success' : 'failed');
   };
+
+  const handleTestGeminiConnection = async () => {
+    setAiConnectionStatus('testing');
+    // Pass the key from tempSettings to test what the user just typed
+    const success = await testGeminiConnection(tempSettings.geminiApiKey);
+    setAiConnectionStatus(success ? 'success' : 'failed');
+  }
 
   const setDateOffset = (days: number) => {
     const date = new Date();
@@ -532,8 +547,103 @@ const App: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-8">
-        {/* Database */}
-        <Card title="Supabase 数据库连接" actions={<Database className="text-blue-500 dark:text-blue-400 w-5 h-5" />}>
+        {/* AI Configuration */}
+        <Card title="AI 模型高级配置" actions={<Cpu className="text-blue-500 dark:text-blue-400 w-5 h-5" />}>
+          <div className="space-y-6">
+             
+             {/* API Key Input */}
+             <InputField
+               label="Gemini API Key"
+               type="password"
+               placeholder="AIzaSy..."
+               value={tempSettings.geminiApiKey}
+               onChange={(e) => setTempSettings({...tempSettings, geminiApiKey: e.target.value})}
+               helperText="请输入您的 Google Gemini API Key。如留空，则尝试使用系统环境变量。"
+             />
+
+             {/* Status Indicator & Test */}
+             <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-3">
+                   <div className={`p-2 rounded-full ${tempSettings.geminiApiKey ? 'bg-blue-100 dark:bg-blue-500/20' : 'bg-slate-200 dark:bg-slate-800'}`}>
+                     <KeyRound className={`w-4 h-4 ${tempSettings.geminiApiKey ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'}`} />
+                   </div>
+                   <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        {tempSettings.geminiApiKey ? '使用自定义 Key' : '默认配置 (Environment)'}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {tempSettings.geminiApiKey ? '已输入 Key' : '未检测到输入，将使用系统默认值'}
+                      </span>
+                   </div>
+                </div>
+                <div className="flex items-center gap-3">
+                   {aiConnectionStatus === 'success' && <span className="text-emerald-500 dark:text-emerald-400 text-sm font-bold">连接正常</span>}
+                   {aiConnectionStatus === 'failed' && <span className="text-rose-500 dark:text-rose-400 text-sm font-bold">连接异常</span>}
+                   <Button variant="outline" onClick={handleTestGeminiConnection} isLoading={aiConnectionStatus === 'testing'} className="text-xs h-8 px-3">
+                     测试连通性
+                   </Button>
+                </div>
+             </div>
+
+             {/* Model Selection */}
+             <div>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-400 mb-3 flex items-center gap-2">
+                  <Zap className="w-4 h-4" /> 思考模型 (Model Selection)
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div 
+                     onClick={() => setTempSettings({ ...tempSettings, aiModel: 'flash' })}
+                     className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${tempSettings.aiModel === 'flash' 
+                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                       : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-600'}`}
+                   >
+                      <div className="flex items-center gap-2 mb-2">
+                         <div className={`w-3 h-3 rounded-full ${tempSettings.aiModel === 'flash' ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
+                         <span className="font-bold text-slate-800 dark:text-slate-200">Gemini 2.5 Flash</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">极速响应，适合大多数常规任务分类。</p>
+                   </div>
+
+                   <div 
+                     onClick={() => setTempSettings({ ...tempSettings, aiModel: 'pro' })}
+                     className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${tempSettings.aiModel === 'pro' 
+                       ? 'border-fuchsia-500 bg-fuchsia-50 dark:bg-fuchsia-900/20' 
+                       : 'border-slate-200 dark:border-slate-700 hover:border-fuchsia-300 dark:hover:border-slate-600'}`}
+                   >
+                      <div className="flex items-center gap-2 mb-2">
+                         <div className={`w-3 h-3 rounded-full ${tempSettings.aiModel === 'pro' ? 'bg-fuchsia-500' : 'bg-slate-300'}`}></div>
+                         <span className="font-bold text-slate-800 dark:text-slate-200">Gemini 3 Pro</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">深度推理，提供更具战略性的拆解建议。</p>
+                   </div>
+                </div>
+             </div>
+
+             {/* Temperature Slider */}
+             <div>
+                <div className="flex justify-between mb-2">
+                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-400 flex items-center gap-2">
+                     <Sliders className="w-4 h-4" /> 创意发散度 (Temperature): {tempSettings.creativity}
+                   </label>
+                   <span className="text-xs text-slate-500 font-mono">
+                     {tempSettings.creativity < 0.4 ? '严谨 (Precise)' : tempSettings.creativity > 0.7 ? '创意 (Creative)' : '平衡 (Balanced)'}
+                   </span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.1" 
+                  value={tempSettings.creativity} 
+                  onChange={(e) => setTempSettings({...tempSettings, creativity: parseFloat(e.target.value)})}
+                  className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+             </div>
+          </div>
+        </Card>
+
+        {/* Supabase Database */}
+        <Card title="Supabase 数据库连接" actions={<Database className="text-emerald-500 dark:text-emerald-400 w-5 h-5" />}>
            <div className="space-y-4">
              <div className="grid md:grid-cols-2 gap-6">
                <InputField
