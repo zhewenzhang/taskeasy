@@ -5,7 +5,7 @@ import { generateAssessmentQuestions, analyzeTaskWithGemini, testGeminiConnectio
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   geminiApiKey: "",
@@ -644,7 +644,21 @@ const App: React.FC = () => {
 
         {/* Supabase Database */}
         <Card title="Supabase 数据库连接" actions={<Database className="text-emerald-500 dark:text-emerald-400 w-5 h-5" />}>
-           <div className="space-y-4">
+           <div className="space-y-5">
+             {/* Instructions Block */}
+             <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300">
+                <div className="flex items-center gap-2 mb-2 text-emerald-700 dark:text-emerald-400 font-bold">
+                  <HelpCircle className="w-4 h-4" /> 如何获取连接信息？
+                </div>
+                <ol className="list-decimal list-inside space-y-1.5 text-xs md:text-sm ml-1 opacity-90">
+                  <li>登录 <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="underline text-emerald-600 hover:text-emerald-500 font-medium">Supabase Dashboard</a> 并进入您的项目。</li>
+                  <li>在最左侧的侧边栏底部，点击 <strong>齿轮图标 (Project Settings)</strong>。</li>
+                  <li>在设置菜单的 "Configuration" 栏目下，点击 <strong>API</strong>。</li>
+                  <li>复制页面最上方的 <strong>Project URL</strong> 填入下方第一个框。</li>
+                  <li>复制下方的 <strong>anon public</strong> Key (在 Project API keys 区域) 填入下方第二个框。</li>
+                </ol>
+             </div>
+
              <div className="grid md:grid-cols-2 gap-6">
                <InputField
                   label="Project URL"
