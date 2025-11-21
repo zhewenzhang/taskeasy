@@ -6,19 +6,31 @@ let supabaseInstance: SupabaseClient | null = null;
 let currentConfig = { url: '', key: '' };
 
 const getClient = (settings: UserSettings): SupabaseClient | null => {
-  if (!settings.supabaseUrl || !settings.supabaseKey) return null;
+  // 1. Sanitize inputs: Trim whitespace
+  let url = settings.supabaseUrl?.trim();
+  const key = settings.supabaseKey?.trim();
+
+  if (!url || !key) return null;
+
+  // 2. Auto-fix URL: Ensure protocol exists to prevent "Invalid URL" constructor errors
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
 
   // Singleton-like: Only recreate if config changes
   if (
     !supabaseInstance || 
-    currentConfig.url !== settings.supabaseUrl || 
-    currentConfig.key !== settings.supabaseKey
+    currentConfig.url !== url || 
+    currentConfig.key !== key
   ) {
     try {
-      supabaseInstance = createClient(settings.supabaseUrl, settings.supabaseKey);
-      currentConfig = { url: settings.supabaseUrl, key: settings.supabaseKey };
+      // 3. Validation: Check if URL is valid before initializing
+      new URL(url); 
+
+      supabaseInstance = createClient(url, key);
+      currentConfig = { url, key };
     } catch (e) {
-      console.error("Failed to initialize Supabase client", e);
+      console.error("Failed to initialize Supabase client:", e);
       return null;
     }
   }
@@ -30,7 +42,7 @@ export const supabaseService = {
     const client = getClient(settings);
     if (!client) return false;
     try {
-      // Try a lightweight query, e.g., fetch 0 items or just check connection
+      // Try a lightweight query to verify credentials
       const { error } = await client.from('tasks').select('count', { count: 'exact', head: true });
       if (error) throw error;
       return true;
@@ -42,7 +54,7 @@ export const supabaseService = {
 
   fetchTasks: async (settings: UserSettings): Promise<Task[]> => {
     const client = getClient(settings);
-    if (!client) throw new Error("Supabase not configured");
+    if (!client) throw new Error("无效的 Supabase 配置 (URL 格式错误或 Key 为空)");
 
     const { data, error } = await client
       .from('tasks')
@@ -55,7 +67,7 @@ export const supabaseService = {
 
   addTask: async (task: Task, settings: UserSettings): Promise<void> => {
     const client = getClient(settings);
-    if (!client) throw new Error("Supabase not configured");
+    if (!client) throw new Error("Supabase 未配置");
 
     const { error } = await client.from('tasks').insert(task);
     if (error) throw error;
@@ -63,7 +75,7 @@ export const supabaseService = {
 
   updateTask: async (taskId: string, updates: Partial<Task>, settings: UserSettings): Promise<void> => {
     const client = getClient(settings);
-    if (!client) throw new Error("Supabase not configured");
+    if (!client) throw new Error("Supabase 未配置");
 
     const { error } = await client.from('tasks').update(updates).eq('id', taskId);
     if (error) throw error;
@@ -71,7 +83,7 @@ export const supabaseService = {
 
   deleteTask: async (taskId: string, settings: UserSettings): Promise<void> => {
     const client = getClient(settings);
-    if (!client) throw new Error("Supabase not configured");
+    if (!client) throw new Error("Supabase 未配置");
 
     const { error } = await client.from('tasks').delete().eq('id', taskId);
     if (error) throw error;

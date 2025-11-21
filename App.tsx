@@ -550,7 +550,20 @@ const App: React.FC = () => {
         {/* AI Configuration */}
         <Card title="AI 模型高级配置" actions={<Cpu className="text-blue-500 dark:text-blue-400 w-5 h-5" />}>
           <div className="space-y-6">
-             
+            
+            {/* Gemini Help Instructions */}
+            <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300">
+               <div className="flex items-center gap-2 mb-2 text-blue-700 dark:text-blue-400 font-bold">
+                 <HelpCircle className="w-4 h-4" /> 如何获取 Gemini API Key？
+               </div>
+               <ol className="list-decimal list-inside space-y-1.5 text-xs md:text-sm ml-1 opacity-90">
+                 <li>访问 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline text-blue-600 hover:text-blue-500 font-medium">Google AI Studio</a> 并登录您的 Google 账号。</li>
+                 <li>点击左上角的 <strong>Get API key</strong> 按钮。</li>
+                 <li>点击 <strong>Create API key</strong> (通常建议并在新项目中创建)。</li>
+                 <li>复制生成的以 <code>AIzaSy...</code> 开头的密钥并填入下方。</li>
+               </ol>
+            </div>
+
              {/* API Key Input */}
              <InputField
                label="Gemini API Key"
