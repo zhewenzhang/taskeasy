@@ -34,26 +34,45 @@ const formatDateKey = (date: Date) => {
 };
 
 const getIntensityClass = (count: number) => {
-  if (count === 0) return 'bg-slate-100 dark:bg-slate-800/50';
-  if (count <= 2) return 'bg-emerald-200 dark:bg-emerald-900/60';
-  if (count <= 4) return 'bg-emerald-400 dark:bg-emerald-700/80';
-  return 'bg-emerald-600 dark:bg-emerald-500';
+  // GitHub Dark Mode Colors
+  if (count === 0) return 'bg-slate-100 dark:bg-[#161b22]'; // Empty (Light: Slate, Dark: GitHub Gray)
+  if (count <= 1) return 'bg-[#9be9a8] dark:bg-[#0e4429]'; // Level 1
+  if (count <= 2) return 'bg-[#40c463] dark:bg-[#006d32]'; // Level 2
+  if (count <= 4) return 'bg-[#30a14e] dark:bg-[#26a641]'; // Level 3
+  return 'bg-[#216e39] dark:bg-[#39d353]';                // Level 4
 };
 
 const Heatmap: React.FC<{ tasks: Task[], onDayClick: (date: string, tasks: Task[]) => void }> = ({ tasks, onDayClick }) => {
-  // Generate last 365 days
-  const days = useMemo(() => {
-    const d = [];
+  
+  // Generate weeks for the last year (52 weeks)
+  const weeks = useMemo(() => {
+    const w = [];
     const today = new Date();
-    for (let i = 364; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(today.getDate() - i);
-      d.push(date);
+    const end = today;
+    const start = new Date(end);
+    start.setDate(start.getDate() - 365);
+    
+    // Align start to the previous Monday (to match rows Mon-Sun)
+    const day = start.getDay();
+    const diff = start.getDate() - day + (day === 0 ? -6 : 1); 
+    start.setDate(diff);
+
+    let current = new Date(start);
+    while (current <= end) {
+      const week = [];
+      for (let i = 0; i < 7; i++) {
+        week.push(new Date(current));
+        current.setDate(current.getDate() + 1);
+      }
+      w.push(week);
+      // Advance to next week start
+      // current is already advanced inside the loop, but we need to ensure we jump correctly if loop logic changes. 
+      // Actually current is incremented 7 times. Correct.
     }
-    return d;
+    return w;
   }, []);
 
-  // Group tasks by date (using createdAt for "Contribution")
+  // Group tasks by date
   const tasksByDate = useMemo(() => {
     const map: Record<string, Task[]> = {};
     tasks.forEach(t => {
@@ -64,66 +83,87 @@ const Heatmap: React.FC<{ tasks: Task[], onDayClick: (date: string, tasks: Task[
     return map;
   }, [tasks]);
 
-  return (
-    <div className="w-full overflow-x-auto custom-scrollbar pb-4">
-      <div className="min-w-[800px] flex flex-col gap-2">
-        <div className="flex text-xs text-slate-400 dark:text-slate-500 pl-8 justify-between w-full">
-           <span>12 Months ago</span>
-           <span>Today</span>
-        </div>
-        <div className="flex gap-2">
-          {/* Day labels */}
-          <div className="flex flex-col gap-1 text-[10px] text-slate-400 dark:text-slate-500 font-mono pt-1 w-6 shrink-0">
-            <span className="h-3">Mon</span>
-            <span className="h-3 mt-6">Wed</span>
-            <span className="h-3 mt-6">Fri</span>
-          </div>
-          
-          {/* Grid */}
-          <div className="grid grid-rows-7 grid-flow-col gap-1 flex-1">
-            {days.map((date, i) => {
-              const key = formatDateKey(date);
-              const dayTasks = tasksByDate[key] || [];
-              const count = dayTasks.length;
-              
-              // Quadrant Breakdown for Tooltip
-              const doCount = dayTasks.filter(t => t.quadrant === QuadrantType.DO).length;
-              const planCount = dayTasks.filter(t => t.quadrant === QuadrantType.PLAN).length;
-              const delegateCount = dayTasks.filter(t => t.quadrant === QuadrantType.DELEGATE).length;
-              const eliminateCount = dayTasks.filter(t => t.quadrant === QuadrantType.ELIMINATE).length;
+  const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-              return (
-                <div 
-                  key={key}
-                  className={`w-3 h-3 rounded-[2px] cursor-pointer transition-colors hover:ring-2 hover:ring-slate-400 dark:hover:ring-slate-500 relative group ${getIntensityClass(count)}`}
-                  onClick={() => onDayClick(key, dayTasks)}
-                >
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 pointer-events-none">
-                     <div className="bg-slate-900 text-white text-xs rounded px-2 py-1.5 whitespace-nowrap shadow-xl">
-                        <div className="font-bold mb-1 border-b border-slate-700 pb-1">{key}</div>
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
-                           <span className="text-blue-300">Do: {doCount}</span>
-                           <span className="text-emerald-300">Plan: {planCount}</span>
-                           <span className="text-amber-300">Del: {delegateCount}</span>
-                           <span className="text-rose-300">Eli: {eliminateCount}</span>
-                        </div>
-                        <div className="mt-1 pt-1 border-t border-slate-700 text-center text-slate-400">
-                          Total: {count}
-                        </div>
-                     </div>
+  return (
+    <div className="w-full overflow-x-auto custom-scrollbar pb-2">
+      <div className="flex flex-col gap-2 min-w-max">
+        
+        {/* Month Labels & Grid Container */}
+        <div className="flex gap-2">
+           {/* Y-Axis Labels (Days) */}
+           <div className="flex flex-col justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono pt-8 pb-2 pr-2 h-[110px]">
+              <span>Mon</span>
+              <span>Wed</span>
+              <span>Fri</span>
+           </div>
+
+           <div className="flex flex-col">
+              {/* X-Axis Labels (Months) */}
+              <div className="flex gap-[3px] mb-2 h-4 relative">
+                 {weeks.map((week, i) => {
+                    const firstDay = week[0];
+                    const prevWeek = weeks[i-1];
+                    const isNewMonth = !prevWeek || prevWeek[0].getMonth() !== firstDay.getMonth();
+                    const monthName = MONTH_LABELS[firstDay.getMonth()];
+                    
+                    // Only show label if there is enough space (skip if it's the very last week to avoid overflow)
+                    if (isNewMonth && i < weeks.length - 2) {
+                       return (
+                          <div key={i} className="absolute text-[10px] text-slate-400 dark:text-slate-500 font-mono" style={{ left: `${i * 13}px` }}>
+                            {monthName}
+                          </div>
+                       );
+                    }
+                    return null;
+                 })}
+              </div>
+
+              {/* Heatmap Grid */}
+              <div className="flex gap-[3px]">
+                {weeks.map((week, weekIndex) => (
+                  <div key={weekIndex} className="flex flex-col gap-[3px]">
+                    {week.map((date, dayIndex) => {
+                       const key = formatDateKey(date);
+                       const dayTasks = tasksByDate[key] || [];
+                       const count = dayTasks.length;
+                       
+                       // Quadrant Breakdown for Tooltip
+                       const doCount = dayTasks.filter(t => t.quadrant === QuadrantType.DO).length;
+                       const planCount = dayTasks.filter(t => t.quadrant === QuadrantType.PLAN).length;
+                       
+                       return (
+                          <div 
+                            key={key}
+                            className={`w-[10px] h-[10px] rounded-[2px] cursor-pointer transition-colors hover:ring-1 hover:ring-slate-400 dark:hover:ring-white/50 relative group ${getIntensityClass(count)}`}
+                            onClick={() => onDayClick(key, dayTasks)}
+                            title={`${key}: ${count} tasks`}
+                          >
+                             {/* Simple Tooltip on Hover */}
+                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-50 pointer-events-none">
+                                <div className="bg-slate-900 text-white text-[10px] rounded px-2 py-1 whitespace-nowrap shadow-xl border border-slate-700">
+                                   <span className="font-bold text-slate-300">{key}</span>
+                                   <span className="mx-1 opacity-50">|</span>
+                                   {count > 0 ? `${count} Tasks` : 'No tasks'}
+                                </div>
+                             </div>
+                          </div>
+                       );
+                    })}
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                ))}
+              </div>
+           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 text-xs text-slate-400 dark:text-slate-500 mt-2">
+
+        {/* Legend */}
+        <div className="flex items-center justify-end gap-2 text-xs text-slate-400 dark:text-slate-500 mt-1 mr-4">
           <span>Less</span>
-          <div className="w-3 h-3 bg-slate-100 dark:bg-slate-800/50 rounded-[2px]"></div>
-          <div className="w-3 h-3 bg-emerald-200 dark:bg-emerald-900/60 rounded-[2px]"></div>
-          <div className="w-3 h-3 bg-emerald-400 dark:bg-emerald-700/80 rounded-[2px]"></div>
-          <div className="w-3 h-3 bg-emerald-600 dark:bg-emerald-500 rounded-[2px]"></div>
+          <div className="w-[10px] h-[10px] bg-slate-100 dark:bg-[#161b22] rounded-[2px]"></div>
+          <div className="w-[10px] h-[10px] bg-[#9be9a8] dark:bg-[#0e4429] rounded-[2px]"></div>
+          <div className="w-[10px] h-[10px] bg-[#40c463] dark:bg-[#006d32] rounded-[2px]"></div>
+          <div className="w-[10px] h-[10px] bg-[#30a14e] dark:bg-[#26a641] rounded-[2px]"></div>
+          <div className="w-[10px] h-[10px] bg-[#216e39] dark:bg-[#39d353] rounded-[2px]"></div>
           <span>More</span>
         </div>
       </div>
@@ -589,6 +629,7 @@ const App: React.FC = () => {
             </div>
           </div>
 
+          {/* Top Row: Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
              <Card className="border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-gradient-to-br dark:from-slate-800 dark:to-blue-900/10">
                <div className="flex items-center gap-4 mb-4">
@@ -621,7 +662,9 @@ const App: React.FC = () => {
              </Card>
           </div>
 
+          {/* Middle Row: Quadrant & Heatmap */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+             {/* Quadrant Distribution */}
              <Card title="象限分布概览" actions={<PieChart className="w-5 h-5 text-slate-400" />}>
                 <div className="space-y-6 mt-2">
                   {[
@@ -646,8 +689,26 @@ const App: React.FC = () => {
                 </div>
              </Card>
 
+             {/* Heatmap Section (Half Width with Scroll) */}
+             <Card title="每日任务热力图" actions={<CalendarDays className="w-5 h-5 text-slate-400" />}>
+               <div className="pt-2 w-full overflow-hidden">
+                  <p className="text-sm text-slate-500 mb-4">
+                    点击方块查看详情。颜色代表任务密度。
+                  </p>
+                  <div className="w-full overflow-x-auto custom-scrollbar">
+                    <Heatmap 
+                      tasks={state.tasks} 
+                      onDayClick={(date, tasks) => setSelectedDateTasks({date, tasks})}
+                    />
+                  </div>
+               </div>
+             </Card>
+          </div>
+
+          {/* Bottom Row: Analysis Advice (Full Width) */}
+          <div className="mb-8">
              <Card title="分析建议" actions={<BarChart3 className="w-5 h-5 text-slate-400" />}>
-               <div className="flex items-center justify-center h-full border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/30 min-h-[200px]">
+               <div className="flex items-center justify-center h-full border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/30 min-h-[150px]">
                   <p className="text-slate-500 dark:text-slate-500 text-sm italic text-center px-8">
                      {total > 0 
                        ? "数据分析模块已激活。建议优先处理 'Do' 象限任务，并为 'Plan' 象限任务预留大块时间。" 
@@ -657,19 +718,6 @@ const App: React.FC = () => {
                </div>
              </Card>
           </div>
-
-          {/* Heatmap Section */}
-          <Card title="每日任务热力图 (Activity Heatmap)" actions={<CalendarDays className="w-5 h-5 text-slate-400" />}>
-             <div className="pt-2">
-                <p className="text-sm text-slate-500 mb-4">
-                  点击热力图方块可查看当天的详细任务列表。颜色深浅代表任务创建密度。
-                </p>
-                <Heatmap 
-                  tasks={state.tasks} 
-                  onDayClick={(date, tasks) => setSelectedDateTasks({date, tasks})}
-                />
-             </div>
-          </Card>
 
           {/* Daily Detail Modal */}
           {selectedDateTasks && (
