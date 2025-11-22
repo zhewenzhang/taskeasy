@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppState, TaskInput, Question, Task, UserSettings, QuadrantType } from './types';
 import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection } from './services/geminiService';
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   aiProvider: 'gemini',
@@ -28,6 +28,109 @@ const THINKING_MESSAGES = [
   "正在完善行动步骤细节..."
 ];
 
+// --- Helper for Heatmap ---
+const formatDateKey = (date: Date) => {
+  return date.toISOString().split('T')[0];
+};
+
+const getIntensityClass = (count: number) => {
+  if (count === 0) return 'bg-slate-100 dark:bg-slate-800/50';
+  if (count <= 2) return 'bg-emerald-200 dark:bg-emerald-900/60';
+  if (count <= 4) return 'bg-emerald-400 dark:bg-emerald-700/80';
+  return 'bg-emerald-600 dark:bg-emerald-500';
+};
+
+const Heatmap: React.FC<{ tasks: Task[], onDayClick: (date: string, tasks: Task[]) => void }> = ({ tasks, onDayClick }) => {
+  // Generate last 365 days
+  const days = useMemo(() => {
+    const d = [];
+    const today = new Date();
+    for (let i = 364; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(today.getDate() - i);
+      d.push(date);
+    }
+    return d;
+  }, []);
+
+  // Group tasks by date (using createdAt for "Contribution")
+  const tasksByDate = useMemo(() => {
+    const map: Record<string, Task[]> = {};
+    tasks.forEach(t => {
+      const dateKey = formatDateKey(new Date(t.createdAt));
+      if (!map[dateKey]) map[dateKey] = [];
+      map[dateKey].push(t);
+    });
+    return map;
+  }, [tasks]);
+
+  return (
+    <div className="w-full overflow-x-auto custom-scrollbar pb-4">
+      <div className="min-w-[800px] flex flex-col gap-2">
+        <div className="flex text-xs text-slate-400 dark:text-slate-500 pl-8 justify-between w-full">
+           <span>12 Months ago</span>
+           <span>Today</span>
+        </div>
+        <div className="flex gap-2">
+          {/* Day labels */}
+          <div className="flex flex-col gap-1 text-[10px] text-slate-400 dark:text-slate-500 font-mono pt-1 w-6 shrink-0">
+            <span className="h-3">Mon</span>
+            <span className="h-3 mt-6">Wed</span>
+            <span className="h-3 mt-6">Fri</span>
+          </div>
+          
+          {/* Grid */}
+          <div className="grid grid-rows-7 grid-flow-col gap-1 flex-1">
+            {days.map((date, i) => {
+              const key = formatDateKey(date);
+              const dayTasks = tasksByDate[key] || [];
+              const count = dayTasks.length;
+              
+              // Quadrant Breakdown for Tooltip
+              const doCount = dayTasks.filter(t => t.quadrant === QuadrantType.DO).length;
+              const planCount = dayTasks.filter(t => t.quadrant === QuadrantType.PLAN).length;
+              const delegateCount = dayTasks.filter(t => t.quadrant === QuadrantType.DELEGATE).length;
+              const eliminateCount = dayTasks.filter(t => t.quadrant === QuadrantType.ELIMINATE).length;
+
+              return (
+                <div 
+                  key={key}
+                  className={`w-3 h-3 rounded-[2px] cursor-pointer transition-colors hover:ring-2 hover:ring-slate-400 dark:hover:ring-slate-500 relative group ${getIntensityClass(count)}`}
+                  onClick={() => onDayClick(key, dayTasks)}
+                >
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 pointer-events-none">
+                     <div className="bg-slate-900 text-white text-xs rounded px-2 py-1.5 whitespace-nowrap shadow-xl">
+                        <div className="font-bold mb-1 border-b border-slate-700 pb-1">{key}</div>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
+                           <span className="text-blue-300">Do: {doCount}</span>
+                           <span className="text-emerald-300">Plan: {planCount}</span>
+                           <span className="text-amber-300">Del: {delegateCount}</span>
+                           <span className="text-rose-300">Eli: {eliminateCount}</span>
+                        </div>
+                        <div className="mt-1 pt-1 border-t border-slate-700 text-center text-slate-400">
+                          Total: {count}
+                        </div>
+                     </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 text-xs text-slate-400 dark:text-slate-500 mt-2">
+          <span>Less</span>
+          <div className="w-3 h-3 bg-slate-100 dark:bg-slate-800/50 rounded-[2px]"></div>
+          <div className="w-3 h-3 bg-emerald-200 dark:bg-emerald-900/60 rounded-[2px]"></div>
+          <div className="w-3 h-3 bg-emerald-400 dark:bg-emerald-700/80 rounded-[2px]"></div>
+          <div className="w-3 h-3 bg-emerald-600 dark:bg-emerald-500 rounded-[2px]"></div>
+          <span>More</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   // Load state from local storage
   const [state, setState] = useState<AppState>(() => {
@@ -35,10 +138,8 @@ const App: React.FC = () => {
     const savedSettings = localStorage.getItem('matrix_ai_settings');
     const savedTheme = localStorage.getItem('matrix_ai_theme') as 'light' | 'dark' || 'dark';
     
-    // Merge default settings with saved to ensure new fields exist
     const parsedSettings = savedSettings ? JSON.parse(savedSettings) : {};
     const mergedSettings = { ...DEFAULT_SETTINGS, ...parsedSettings };
-    // Ensure silicon model has default if undefined in old saves
     if(!mergedSettings.siliconFlowModel) mergedSettings.siliconFlowModel = "deepseek-ai/DeepSeek-V3";
     if(!mergedSettings.aiProvider) mergedSettings.aiProvider = "gemini";
 
@@ -63,6 +164,9 @@ const App: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [thinkingStep, setThinkingStep] = useState(0);
 
+  // Stats Heatmap State
+  const [selectedDateTasks, setSelectedDateTasks] = useState<{ date: string, tasks: Task[] } | null>(null);
+
   // Temp state for settings form
   const [tempSettings, setTempSettings] = useState<UserSettings>(state.settings);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
@@ -72,7 +176,6 @@ const App: React.FC = () => {
 
   // --- Effects ---
 
-  // Apply Theme
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
@@ -80,19 +183,17 @@ const App: React.FC = () => {
     localStorage.setItem('matrix_ai_theme', state.theme);
   }, [state.theme]);
 
-  // Thinking Animation Effect
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (state.wizardStep === 'analyzing') {
       setThinkingStep(0);
       interval = setInterval(() => {
         setThinkingStep(prev => (prev + 1) % THINKING_MESSAGES.length);
-      }, 2000); // Change message every 2s
+      }, 2000);
     }
     return () => clearInterval(interval);
   }, [state.wizardStep]);
 
-  // Data Sync
   const refreshTasks = useCallback(async () => {
     if (isSupabaseConfigured) {
       setState(prev => ({ ...prev, isSyncing: true }));
@@ -166,6 +267,9 @@ const App: React.FC = () => {
       tasks: prev.tasks.filter(t => t.id !== taskId)
     }));
     if (selectedTask?.id === taskId) setSelectedTask(null);
+    if (selectedDateTasks) {
+       setSelectedDateTasks(prev => prev ? ({...prev, tasks: prev.tasks.filter(t => t.id !== taskId)}) : null);
+    }
 
     if (isSupabaseConfigured) {
       try {
@@ -194,6 +298,10 @@ const App: React.FC = () => {
     
     if (selectedTask?.id === task.id) {
       setSelectedTask(updatedTask);
+    }
+    // Update modal list if open
+    if (selectedDateTasks) {
+       setSelectedDateTasks(prev => prev ? ({...prev, tasks: prev.tasks.map(t => t.id === task.id ? updatedTask : t)}) : null);
     }
 
     if (isSupabaseConfigured) {
@@ -232,7 +340,6 @@ const App: React.FC = () => {
     setInputTime(dateString);
   };
 
-  // --- Wizard Logic ---
   const handleStartAssessment = async () => {
     if (!inputName || !inputTime) return;
     setIsLoading(true);
@@ -288,7 +395,6 @@ const App: React.FC = () => {
 
   const renderTaskDetail = (task: Task, isOverlay: boolean = false) => (
     <Card title={isOverlay ? "任务详情" : undefined} className={`h-full border-t-4 border-t-blue-500 flex flex-col shadow-2xl ${!isOverlay ? 'border-slate-200 dark:border-slate-700 relative' : ''}`}>
-       {/* Controls */}
        {isOverlay ? (
          <button onClick={() => setSelectedTask(null)} className="absolute top-4 right-4 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full z-10">
            <X className="w-5 h-5" />
@@ -317,7 +423,6 @@ const App: React.FC = () => {
       </div>
       
       <div className="space-y-6 text-sm flex-1 overflow-y-auto custom-scrollbar pr-1">
-        {/* Completion Toggle */}
         <button 
           onClick={() => toggleTaskCompletion(task)}
           className={`w-full py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border
@@ -375,7 +480,6 @@ const App: React.FC = () => {
            <div className="text-xs text-indigo-600 dark:text-indigo-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
             <BrainCircuit className="w-4 h-4" /> 智能建议与策略
           </div>
-          {/* Enhanced Contrast for Advice Section */}
           <div className="text-slate-900 dark:text-indigo-100 text-sm leading-relaxed bg-indigo-50/80 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700/50 shadow-sm">
              <div className="flex items-start gap-2">
                <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
@@ -384,7 +488,6 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Delete button for overlay */}
         {isOverlay && (
            <div className="pt-6">
              <Button variant="danger" className="w-full" onClick={() => deleteTask(task.id)}>
@@ -430,12 +533,12 @@ const App: React.FC = () => {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 h-full relative">
-        {/* Matrix Section - Dynamic width based on selection */}
+        {/* Matrix Section */}
         <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} h-full transition-all duration-500 ease-in-out`}>
           <Matrix tasks={state.tasks} onTaskClick={setSelectedTask} />
         </div>
 
-        {/* Desktop Sidebar Task Detail - Only visible when task selected */}
+        {/* Desktop Sidebar Task Detail */}
         {selectedTask && (
           <div className="hidden lg:block lg:col-span-1 h-full max-h-[calc(100vh-180px)] overflow-hidden animate-in slide-in-from-right-8 fade-in duration-300">
             {renderTaskDetail(selectedTask)}
@@ -454,14 +557,12 @@ const App: React.FC = () => {
               {renderTaskDetail(selectedTask, true)}
             </div>
           </div>
-          {/* Click backdrop to close */}
           <div className="absolute inset-0 -z-10" onClick={() => setSelectedTask(null)}></div>
         </div>
       )}
     </div>
   );
 
-  // Same structure for Stats & Settings, just wrapped with standard container
   const renderStats = () => {
     const total = state.tasks.length;
     const completed = state.tasks.filter(t => t.isCompleted).length;
@@ -475,7 +576,7 @@ const App: React.FC = () => {
     };
 
     return (
-       <div className="w-full max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+       <div className="w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 sticky top-16 md:top-20 z-30 bg-slate-50/95 dark:bg-[#0f172a]/95 py-4 border-b border-slate-200 dark:border-slate-800">
             <div className="mb-4 md:mb-0">
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">数据统计分析</h2>
@@ -520,7 +621,7 @@ const App: React.FC = () => {
              </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
              <Card title="象限分布概览" actions={<PieChart className="w-5 h-5 text-slate-400" />}>
                 <div className="space-y-6 mt-2">
                   {[
@@ -546,7 +647,7 @@ const App: React.FC = () => {
              </Card>
 
              <Card title="分析建议" actions={<BarChart3 className="w-5 h-5 text-slate-400" />}>
-               <div className="flex items-center justify-center h-64 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/30">
+               <div className="flex items-center justify-center h-full border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/30 min-h-[200px]">
                   <p className="text-slate-500 dark:text-slate-500 text-sm italic text-center px-8">
                      {total > 0 
                        ? "数据分析模块已激活。建议优先处理 'Do' 象限任务，并为 'Plan' 象限任务预留大块时间。" 
@@ -556,6 +657,66 @@ const App: React.FC = () => {
                </div>
              </Card>
           </div>
+
+          {/* Heatmap Section */}
+          <Card title="每日任务热力图 (Activity Heatmap)" actions={<CalendarDays className="w-5 h-5 text-slate-400" />}>
+             <div className="pt-2">
+                <p className="text-sm text-slate-500 mb-4">
+                  点击热力图方块可查看当天的详细任务列表。颜色深浅代表任务创建密度。
+                </p>
+                <Heatmap 
+                  tasks={state.tasks} 
+                  onDayClick={(date, tasks) => setSelectedDateTasks({date, tasks})}
+                />
+             </div>
+          </Card>
+
+          {/* Daily Detail Modal */}
+          {selectedDateTasks && (
+             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <div className="w-full max-w-md bg-white dark:bg-[#1e293b] rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                   <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-slate-800">
+                      <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                        <CalendarDays className="w-5 h-5 text-blue-500" /> {selectedDateTasks.date}
+                      </h3>
+                      <button onClick={() => setSelectedDateTasks(null)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                         <X className="w-5 h-5 text-slate-500" />
+                      </button>
+                   </div>
+                   <div className="p-4 overflow-y-auto custom-scrollbar space-y-3">
+                      {selectedDateTasks.tasks.length === 0 ? (
+                        <p className="text-center text-slate-500 py-8 italic">当天无任务记录</p>
+                      ) : (
+                        selectedDateTasks.tasks.map(task => (
+                          <div key={task.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800">
+                             <div className="flex flex-col gap-1">
+                               <span className={`font-medium text-sm ${task.isCompleted ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'}`}>
+                                 {task.name}
+                               </span>
+                               <span className={`text-[10px] px-2 py-0.5 rounded-full w-fit border ${
+                                  task.quadrant === QuadrantType.DO ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                  task.quadrant === QuadrantType.PLAN ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                  task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-rose-100 text-rose-700 border-rose-200'
+                               }`}>
+                                 {task.quadrant}
+                               </span>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                <button onClick={() => toggleTaskCompletion(task)} className={`p-1.5 rounded-md ${task.isCompleted ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 hover:text-emerald-500 hover:bg-slate-100'}`}>
+                                   <CheckCircle className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => deleteTask(task.id)} className="p-1.5 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50">
+                                   <Trash2 className="w-4 h-4" />
+                                </button>
+                             </div>
+                          </div>
+                        ))
+                      )}
+                   </div>
+                </div>
+                <div className="absolute inset-0 -z-10" onClick={() => setSelectedDateTasks(null)}></div>
+             </div>
+          )}
        </div>
     );
   };
@@ -846,7 +1007,6 @@ const App: React.FC = () => {
     }
 
     if (state.wizardStep === 'analyzing') {
-      // Enhanced Thinking Animation
       return (
         <div className="max-w-md mx-auto w-full text-center pt-10 animate-in fade-in duration-700">
            <div className="relative w-32 h-32 mx-auto mb-8">
@@ -900,9 +1060,7 @@ const App: React.FC = () => {
            </div>
            
            <div className="flex-1 overflow-hidden bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl relative">
-             {/* Re-use the detail view but embedded */}
              <div className="h-full p-6 overflow-y-auto custom-scrollbar">
-                {/* Reuse renderTaskDetail logic but flatten the card structure slightly */}
                 <div className="flex justify-between items-start mb-6">
                    <h3 className="text-2xl font-bold leading-tight mr-2 text-slate-900 dark:text-white">{previewTask.name}</h3>
                    <span className={`px-4 py-1.5 rounded-full font-bold text-sm border ${
@@ -921,7 +1079,6 @@ const App: React.FC = () => {
                    </div>
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200 dark:border-slate-800">
                       <div className="text-xs text-slate-500 uppercase font-bold mb-2">核心建议</div>
-                      {/* Enhanced Advice Display in Result View */}
                       <p className="text-slate-800 dark:text-indigo-200 font-medium leading-relaxed">{previewTask.advice}</p>
                    </div>
                 </div>
