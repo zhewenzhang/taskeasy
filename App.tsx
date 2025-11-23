@@ -44,20 +44,28 @@ const getIntensityClass = (count: number) => {
 
 const Heatmap: React.FC<{ tasks: Task[], onDayClick: (date: string, tasks: Task[]) => void }> = ({ tasks, onDayClick }) => {
   
-  // Generate weeks for the last year (52 weeks)
+  const currentYear = new Date().getFullYear();
+
+  // Generate weeks for the current year (Jan 1 to Dec 31)
   const weeks = useMemo(() => {
     const w = [];
-    const today = new Date();
-    const end = today;
-    const start = new Date(end);
-    start.setDate(start.getDate() - 365);
+    
+    // Start from Jan 1st of current year
+    const start = new Date(currentYear, 0, 1);
+    // End at Dec 31st of current year
+    const end = new Date(currentYear, 11, 31);
     
     // Align start to the previous Monday (to match rows Mon-Sun)
-    const day = start.getDay();
-    const diff = start.getDate() - day + (day === 0 ? -6 : 1); 
-    start.setDate(diff);
+    // 0 = Sun, 1 = Mon, ...
+    const dayOfWeek = start.getDay();
+    // If Mon(1), diff is 0. If Sun(0), diff is -6. If Tue(2), diff is -1.
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    
+    // Initialize current pointer to the Monday of the first week
+    const current = new Date(start);
+    current.setDate(start.getDate() + diff);
 
-    let current = new Date(start);
+    // Generate weeks until we cover the entire year
     while (current <= end) {
       const week = [];
       for (let i = 0; i < 7; i++) {
@@ -65,12 +73,9 @@ const Heatmap: React.FC<{ tasks: Task[], onDayClick: (date: string, tasks: Task[
         current.setDate(current.getDate() + 1);
       }
       w.push(week);
-      // Advance to next week start
-      // current is already advanced inside the loop, but we need to ensure we jump correctly if loop logic changes. 
-      // Actually current is incremented 7 times. Correct.
     }
     return w;
-  }, []);
+  }, [currentYear]);
 
   // Group tasks by date
   const tasksByDate = useMemo(() => {
@@ -103,6 +108,10 @@ const Heatmap: React.FC<{ tasks: Task[], onDayClick: (date: string, tasks: Task[
               <div className="flex gap-[3px] mb-2 h-4 relative">
                  {weeks.map((week, i) => {
                     const firstDay = week[0];
+                    
+                    // Skip label if it belongs to previous year (prevent 'Dec' showing at start)
+                    if (firstDay.getFullYear() < currentYear) return null;
+
                     const prevWeek = weeks[i-1];
                     const isNewMonth = !prevWeek || prevWeek[0].getMonth() !== firstDay.getMonth();
                     const monthName = MONTH_LABELS[firstDay.getMonth()];
@@ -434,7 +443,7 @@ const App: React.FC = () => {
   // --- Render Components ---
 
   const renderTaskDetail = (task: Task, isOverlay: boolean = false) => (
-    <Card title={isOverlay ? "任务详情" : undefined} className={`h-full border-t-4 border-t-blue-500 flex flex-col shadow-2xl ${!isOverlay ? 'border-slate-200 dark:border-slate-700 relative' : ''}`}>
+    <Card title={isOverlay ? "任务详情" : undefined} className={`h-full border-t-4 border-t-blue-500 flex flex-col shadow-2xl ${!isOverlay ? 'border-slate-200 dark:border-slate-700 relative' : 'min-h-0'}`}>
        {isOverlay ? (
          <button onClick={() => setSelectedTask(null)} className="absolute top-4 right-4 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full z-10">
            <X className="w-5 h-5" />
@@ -542,9 +551,9 @@ const App: React.FC = () => {
   // --- Views ---
 
   const renderDashboard = () => (
-    <div className="w-full animate-in fade-in duration-500 h-full flex flex-col">
+    <div className="w-full animate-in fade-in duration-500 flex flex-col min-h-full pb-10">
       {/* Dashboard Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 px-1 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 px-1 gap-4 shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">任务矩阵看板</h2>
           <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -572,15 +581,15 @@ const App: React.FC = () => {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 h-full relative">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 relative items-start">
         {/* Matrix Section */}
-        <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} h-full transition-all duration-500 ease-in-out`}>
+        <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} transition-all duration-500 ease-in-out`}>
           <Matrix tasks={state.tasks} onTaskClick={setSelectedTask} />
         </div>
 
-        {/* Desktop Sidebar Task Detail */}
+        {/* Desktop Sidebar Task Detail - Sticky Position */}
         {selectedTask && (
-          <div className="hidden lg:block lg:col-span-1 h-full max-h-[calc(100vh-180px)] overflow-hidden animate-in slide-in-from-right-8 fade-in duration-300">
+          <div className="hidden lg:block lg:col-span-1 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-hidden rounded-xl animate-in slide-in-from-right-8 fade-in duration-300">
             {renderTaskDetail(selectedTask)}
           </div>
         )}
@@ -663,9 +672,9 @@ const App: React.FC = () => {
           </div>
 
           {/* Middle Row: Quadrant & Heatmap */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-             {/* Quadrant Distribution */}
-             <Card title="象限分布概览" actions={<PieChart className="w-5 h-5 text-slate-400" />}>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+             {/* Quadrant Distribution (1/3 Width) */}
+             <Card className="lg:col-span-1" title="象限分布概览" actions={<PieChart className="w-5 h-5 text-slate-400" />}>
                 <div className="space-y-6 mt-2">
                   {[
                     { label: "马上做 (Do)", color: "bg-blue-500", text: "text-blue-600 dark:text-blue-400", count: quadrantStats[QuadrantType.DO] },
@@ -689,8 +698,8 @@ const App: React.FC = () => {
                 </div>
              </Card>
 
-             {/* Heatmap Section (Half Width with Scroll) */}
-             <Card title="每日任务热力图" actions={<CalendarDays className="w-5 h-5 text-slate-400" />}>
+             {/* Heatmap Section (2/3 Width) */}
+             <Card className="lg:col-span-2" title="每日任务热力图" actions={<CalendarDays className="w-5 h-5 text-slate-400" />}>
                <div className="pt-2 w-full overflow-hidden">
                   <p className="text-sm text-slate-500 mb-4">
                     点击方块查看详情。颜色代表任务密度。

@@ -28,7 +28,7 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
     const quadrantTasks = getTasksForQuadrant(type);
     
     return (
-      <div className={`relative p-4 md:p-6 flex flex-col h-full min-h-[300px] md:min-h-0 transition-all duration-300 ${styles.bg} ${styles.border}`}>
+      <div className={`relative p-4 md:p-6 flex flex-col h-full min-h-[300px] transition-all duration-300 ${styles.bg} ${styles.border}`}>
         {/* Header Area */}
         <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6 opacity-100 shrink-0">
           <div className={`p-2 md:p-3 rounded-xl shadow-sm ${styles.iconBg} ${styles.text}`}>
@@ -40,10 +40,10 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
           </div>
         </div>
         
-        {/* Task List Area */}
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1 md:pr-2 custom-scrollbar pb-4 md:pb-0">
+        {/* Task List Area - Removed overflow-y-auto to allow full expansion */}
+        <div className="flex-1 space-y-3 pb-4 md:pb-0">
           {quadrantTasks.length === 0 && (
-            <div className="h-32 md:h-full flex items-center justify-center text-slate-400 dark:text-slate-600 text-sm italic border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-white/50 dark:bg-slate-900/20">
+            <div className="h-32 flex items-center justify-center text-slate-400 dark:text-slate-600 text-sm italic border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-white/50 dark:bg-slate-900/20">
               暂无任务
             </div>
           )}
@@ -68,7 +68,7 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
               )}
               
               <div className="flex justify-between items-start mb-2 pr-4">
-                <span className={`text-sm md:text-base font-semibold leading-snug line-clamp-2 transition-colors 
+                <span className={`text-sm md:text-base font-semibold leading-snug transition-colors 
                   ${task.isCompleted 
                     ? 'text-slate-500 line-through decoration-slate-400' 
                     : 'text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white'
@@ -88,9 +88,9 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
   };
 
   return (
-    // Responsive Container: Standard block on mobile, Fixed height on desktop
-    <div className="w-full h-auto md:h-[calc(100vh-180px)] min-h-[600px] relative bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none flex flex-col">
-      <div className="grid grid-cols-1 md:grid-cols-2 grid-rows-4 md:grid-rows-2 h-full w-full">
+    // Responsive Container: Fixed height removed. Now h-auto to allow growth.
+    <div className="w-full h-auto min-h-[calc(100vh-180px)] relative bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none flex flex-col">
+      <div className="grid grid-cols-1 md:grid-cols-2 h-full w-full">
         {/* Q1: Do */}
         {renderQuadrant(
           QuadrantType.DO, 
