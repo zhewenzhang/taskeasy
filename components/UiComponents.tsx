@@ -48,7 +48,7 @@ export const Card: React.FC<{ children: React.ReactNode; className?: string; tit
         {actions && <div>{actions}</div>}
       </div>
     )}
-    <div className="p-5 md:p-6 flex-1 relative z-10 text-slate-600 dark:text-slate-300">
+    <div className="p-5 md:p-6 flex-1 relative z-10 text-slate-600 dark:text-slate-300 flex flex-col min-h-0">
       {children}
     </div>
   </div>
