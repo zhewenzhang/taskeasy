@@ -16,8 +16,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   creativity: 0.7,
   customPrompt: "",
   userContext: "",
-  supabaseUrl: "",
-  supabaseKey: ""
+  supabaseUrl: "https://uwvlduprxppwdkjkvwby.supabase.co",
+  supabaseKey: "sb_publishable_NCyVuDM0d_Nkn50QvKdY-Q_OCQJsN5L"
 };
 
 const THINKING_MESSAGES = [
@@ -188,9 +188,17 @@ const App: React.FC = () => {
     const savedTheme = localStorage.getItem('matrix_ai_theme') as 'light' | 'dark' || 'dark';
     
     const parsedSettings = savedSettings ? JSON.parse(savedSettings) : {};
+    
+    // Merge logic: Use defaults, then overwrite with saved, but ensure critical defaults are present if empty
     const mergedSettings = { ...DEFAULT_SETTINGS, ...parsedSettings };
-    if(!mergedSettings.siliconFlowModel) mergedSettings.siliconFlowModel = "deepseek-ai/DeepSeek-V3";
-    if(!mergedSettings.aiProvider) mergedSettings.aiProvider = "gemini";
+    
+    // Force use default Supabase config if local setting is empty/missing
+    if (!mergedSettings.supabaseUrl) mergedSettings.supabaseUrl = DEFAULT_SETTINGS.supabaseUrl;
+    if (!mergedSettings.supabaseKey) mergedSettings.supabaseKey = DEFAULT_SETTINGS.supabaseKey;
+    
+    // Ensure AI provider defaults
+    if (!mergedSettings.siliconFlowModel) mergedSettings.siliconFlowModel = "deepseek-ai/DeepSeek-V3";
+    if (!mergedSettings.aiProvider) mergedSettings.aiProvider = "gemini";
 
     return {
       theme: savedTheme,
@@ -898,45 +906,8 @@ const App: React.FC = () => {
             helperText="附加给 AI 的额外指令。"
           />
         </Card>
-
-        <Card title="数据同步 (Supabase)" actions={<Database className="text-emerald-500 dark:text-emerald-400 w-5 h-5" />}>
-          <div className="space-y-5">
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300">
-              <h4 className="font-bold mb-2 flex items-center gap-2"><HelpCircle className="w-4 h-4"/> 如何连接 Supabase?</h4>
-              <ol className="list-decimal list-inside space-y-1 ml-1 marker:text-slate-400">
-                <li>登录 <a href="https://supabase.com/dashboard" target="_blank" className="text-blue-500 hover:underline">Supabase Dashboard</a></li>
-                <li>进入您的 Project</li>
-                <li>点击左下角齿轮图标 <strong>Project Settings</strong></li>
-                <li>点击侧边栏的 <strong>API</strong> 菜单</li>
-                <li>复制顶部的 <strong>Project URL</strong></li>
-                <li>复制下方的 <strong>anon public</strong> Key</li>
-              </ol>
-            </div>
-            <InputField 
-              label="Project URL" 
-              placeholder="https://xyz.supabase.co" 
-              value={tempSettings.supabaseUrl}
-              onChange={(e) => setTempSettings({...tempSettings, supabaseUrl: e.target.value})}
-            />
-            <InputField 
-              label="Anon Public Key" 
-              type="password" 
-              placeholder="eyJh..." 
-              value={tempSettings.supabaseKey}
-              onChange={(e) => setTempSettings({...tempSettings, supabaseKey: e.target.value})}
-            />
-            <div className="flex justify-end">
-               <Button 
-                 type="button" 
-                 variant="outline" 
-                 onClick={testSupabaseConnection} 
-                 isLoading={connectionStatus === 'testing'}
-               >
-                 {connectionStatus === 'success' ? '连接成功' : connectionStatus === 'failed' ? '连接失败' : '测试连接'}
-               </Button>
-            </div>
-          </div>
-        </Card>
+        
+        {/* Supabase configuration hidden as requested since it is auto-configured */}
       </div>
     </div>
   );
