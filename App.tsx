@@ -5,7 +5,7 @@ import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection } 
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   aiProvider: 'gemini',
@@ -221,6 +221,10 @@ const App: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [thinkingStep, setThinkingStep] = useState(0);
 
+  // Edit State
+  const [isEditingTask, setIsEditingTask] = useState(false);
+  const [editForm, setEditForm] = useState<{name: string, estimatedTime: string, quadrant: QuadrantType} | null>(null);
+
   // Stats Heatmap State
   const [selectedDateTasks, setSelectedDateTasks] = useState<{ date: string, tasks: Task[] } | null>(null);
 
@@ -306,6 +310,7 @@ const App: React.FC = () => {
     const today = new Date().toISOString().split('T')[0];
     setInputTime(today);
     setSelectedTask(null);
+    setIsEditingTask(false);
   };
 
   const navigateTo = (view: 'dashboard' | 'wizard' | 'settings' | 'stats') => {
@@ -315,6 +320,60 @@ const App: React.FC = () => {
       setAiConnectionStatus('idle');
     }
     setState(prev => ({ ...prev, view, error: null }));
+    setIsEditingTask(false);
+  };
+
+  const selectTask = (task: Task) => {
+    setSelectedTask(task);
+    setIsEditingTask(false);
+  };
+
+  // --- Edit Actions ---
+
+  const startEditing = (task: Task) => {
+    setEditForm({
+      name: task.name,
+      estimatedTime: task.estimatedTime,
+      quadrant: task.quadrant
+    });
+    setIsEditingTask(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditingTask(false);
+    setEditForm(null);
+  };
+
+  const saveTaskChanges = async () => {
+    if (!selectedTask || !editForm) return;
+
+    const updatedTask = {
+      ...selectedTask,
+      name: editForm.name,
+      estimatedTime: editForm.estimatedTime,
+      quadrant: editForm.quadrant
+    };
+
+    // Optimistic Update
+    setState(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === updatedTask.id ? updatedTask : t)
+    }));
+    setSelectedTask(updatedTask);
+    setIsEditingTask(false);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.updateTask(updatedTask.id, {
+          name: updatedTask.name,
+          estimatedTime: updatedTask.estimatedTime,
+          quadrant: updatedTask.quadrant
+        }, state.settings);
+      } catch (error) {
+        console.error("Failed to update task:", error);
+        setState(prev => ({ ...prev, error: "更新失败，请重试" }));
+      }
+    }
   };
 
   const deleteTask = async (taskId: string) => {
@@ -323,7 +382,10 @@ const App: React.FC = () => {
       ...prev,
       tasks: prev.tasks.filter(t => t.id !== taskId)
     }));
-    if (selectedTask?.id === taskId) setSelectedTask(null);
+    if (selectedTask?.id === taskId) {
+       setSelectedTask(null);
+       setIsEditingTask(false);
+    }
     if (selectedDateTasks) {
        setSelectedDateTasks(prev => prev ? ({...prev, tasks: prev.tasks.filter(t => t.id !== taskId)}) : null);
     }
@@ -450,14 +512,36 @@ const App: React.FC = () => {
 
   // --- Render Components ---
 
-  const renderTaskDetail = (task: Task, isOverlay: boolean = false) => (
-    <Card title={isOverlay ? "任务详情" : undefined} className={`h-full border-t-4 border-t-blue-500 flex flex-col shadow-2xl ${!isOverlay ? 'border-slate-200 dark:border-slate-700 relative' : 'min-h-0'}`}>
-       {isOverlay ? (
-         <button onClick={() => setSelectedTask(null)} className="absolute top-4 right-4 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full z-10">
-           <X className="w-5 h-5" />
-         </button>
-       ) : (
-         <div className="absolute top-3 right-3 flex gap-1 z-10">
+  const renderTaskDetail = (task: Task, isOverlay: boolean = false) => {
+    // Shared Action Buttons Component
+    const ActionButtons = () => (
+      <div className="flex items-center gap-1">
+        {isEditingTask ? (
+          <>
+            <button 
+              onClick={saveTaskChanges} 
+              className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
+              title="保存"
+            >
+              <Save className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={cancelEditing} 
+              className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="取消编辑"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button 
+              onClick={() => startEditing(task)} 
+              className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+              title="编辑任务"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
             <button 
               onClick={() => deleteTask(task.id)} 
               className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
@@ -466,95 +550,163 @@ const App: React.FC = () => {
               <Trash2 className="w-4 h-4" />
             </button>
             <button 
-              onClick={() => setSelectedTask(null)} 
+              onClick={() => { setSelectedTask(null); setIsEditingTask(false); }} 
               className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
               title="关闭详情"
             >
               <X className="w-5 h-5" />
             </button>
-         </div>
-       )}
-
-      <div className={`flex justify-between items-start mb-6 ${isOverlay ? 'mt-4' : 'mt-2'} ${!isOverlay ? 'pr-20' : ''}`}>
-        <h3 className={`text-xl font-bold leading-tight ${task.isCompleted ? 'text-slate-400 line-through decoration-slate-400' : 'text-slate-900 dark:text-white'}`}>{task.name}</h3>
-      </div>
-      
-      <div className="space-y-6 text-sm flex-1 overflow-y-auto custom-scrollbar pr-1 pb-6 min-h-0">
-        <button 
-          onClick={() => toggleTaskCompletion(task)}
-          className={`w-full py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border
-          ${task.isCompleted 
-            ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700' 
-            : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 dark:shadow-none'}`}
-        >
-          {task.isCompleted ? (
-             <>
-              <RotateCcw className="w-4 h-4" /> 标记为未完成
-             </>
-          ) : (
-            <>
-              <CheckCircle className="w-4 h-4" /> 标记为已完成
-            </>
-          )}
-        </button>
-
-        <div className="grid grid-cols-1 gap-4">
-          <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
-             <span className="text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">优先级分类</span>
-             <span className={`font-bold text-base px-3 py-1 rounded-full bg-opacity-10 border
-              ${task.quadrant === 'Do' ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-400/10 border-blue-200 dark:border-blue-400/30' : 
-                task.quadrant === 'Plan' ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-400/10 border-emerald-200 dark:border-emerald-400/30' : 
-                task.quadrant === 'Delegate' ? 'text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 border-amber-200 dark:border-amber-400/30' : 'text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-400/10 border-rose-200 dark:border-rose-400/30'}`}>
-               {task.quadrant}
-             </span>
-          </div>
-          <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
-             <span className="text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">截止日期</span>
-             <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-base">{task.estimatedTime}</span>
-          </div>
-        </div>
-
-        <div className="bg-slate-50 dark:bg-slate-900/30 p-5 rounded-lg border border-slate-200 dark:border-slate-800">
-          <div className="text-xs text-slate-500 mb-2 uppercase tracking-wider font-bold">分类逻辑</div>
-          <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm">"{task.reasoning}"</div>
-        </div>
-
-        <div>
-          <div className="text-xs text-blue-600 dark:text-blue-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-            <ListTodo className="w-4 h-4" /> 执行步骤
-          </div>
-          <ul className="space-y-3">
-            {task.steps.map((step, i) => (
-              <li key={i} className="flex gap-3 text-slate-700 dark:text-slate-300 text-sm">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-mono shrink-0 font-bold">{i+1}</span>
-                <span className={`leading-snug ${task.isCompleted ? 'line-through opacity-60' : ''}`}>{step}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div>
-           <div className="text-xs text-indigo-600 dark:text-indigo-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-            <BrainCircuit className="w-4 h-4" /> 智能建议与策略
-          </div>
-          <div className="text-slate-900 dark:text-indigo-100 text-sm leading-relaxed bg-indigo-50/80 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700/50 shadow-sm">
-             <div className="flex items-start gap-2">
-               <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
-               <span className="whitespace-pre-wrap font-medium dark:font-normal">{task.advice}</span>
-             </div>
-          </div>
-        </div>
-
-        {isOverlay && (
-           <div className="pt-6">
-             <Button variant="danger" className="w-full" onClick={() => deleteTask(task.id)}>
-               <Trash2 className="w-4 h-4 mr-2" /> 删除任务
-             </Button>
-           </div>
+          </>
         )}
       </div>
-    </Card>
-  );
+    );
+
+    return (
+      <Card 
+        title={isOverlay ? (isEditingTask ? "编辑任务" : "任务详情") : undefined} 
+        actions={isOverlay ? <ActionButtons /> : undefined}
+        className={`h-full border-t-4 border-t-blue-500 flex flex-col shadow-2xl ${!isOverlay ? 'border-slate-200 dark:border-slate-700 relative' : 'min-h-0'}`}
+      >
+        {/* Desktop Absolute Actions */}
+        {!isOverlay && (
+          <div className="absolute top-3 right-3 z-10">
+             <ActionButtons />
+          </div>
+        )}
+
+        {/* Editing Mode Header */}
+        {isEditingTask && editForm ? (
+          <div className={`mb-6 ${!isOverlay ? 'mt-2 pr-20' : 'mt-2'}`}>
+             <label className="block text-xs font-bold text-slate-400 uppercase mb-1">任务名称</label>
+             <input 
+                value={editForm.name}
+                onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                className="w-full text-xl font-bold bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+             />
+          </div>
+        ) : (
+          <div className={`flex justify-between items-start mb-6 ${!isOverlay ? 'mt-2 pr-20' : 'mt-2'}`}>
+            <h3 className={`text-xl font-bold leading-tight ${task.isCompleted ? 'text-slate-400 line-through decoration-slate-400' : 'text-slate-900 dark:text-white'}`}>{task.name}</h3>
+          </div>
+        )}
+        
+        <div className="space-y-6 text-sm flex-1 overflow-y-auto custom-scrollbar pr-1 pb-6 min-h-0">
+          {!isEditingTask && (
+            <button 
+              onClick={() => toggleTaskCompletion(task)}
+              className={`w-full py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border
+              ${task.isCompleted 
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700' 
+                : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 dark:shadow-none'}`}
+            >
+              {task.isCompleted ? (
+                <>
+                  <RotateCcw className="w-4 h-4" /> 标记为未完成
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" /> 标记为已完成
+                </>
+              )}
+            </button>
+          )}
+
+          {isEditingTask && editForm ? (
+             <div className="grid grid-cols-1 gap-6">
+                {/* Edit Quadrant */}
+                <div>
+                   <label className="block text-xs font-bold text-slate-400 uppercase mb-2">优先级 / 象限</label>
+                   <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { type: QuadrantType.DO, label: "Do (马上做)", color: "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" },
+                        { type: QuadrantType.PLAN, label: "Plan (计划做)", color: "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" },
+                        { type: QuadrantType.DELEGATE, label: "Delegate (授权)", color: "border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300" },
+                        { type: QuadrantType.ELIMINATE, label: "Eliminate (减少)", color: "border-rose-500 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300" }
+                      ].map((q) => (
+                         <button
+                            key={q.type}
+                            onClick={() => setEditForm({...editForm, quadrant: q.type})}
+                            className={`p-3 rounded-lg border-2 text-xs font-bold transition-all ${editForm.quadrant === q.type ? q.color : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-400'}`}
+                         >
+                            {q.label}
+                         </button>
+                      ))}
+                   </div>
+                </div>
+
+                {/* Edit Date */}
+                <div>
+                   <label className="block text-xs font-bold text-slate-400 uppercase mb-2">截止日期</label>
+                   <input 
+                      type="date"
+                      value={editForm.estimatedTime}
+                      onChange={(e) => setEditForm({...editForm, estimatedTime: e.target.value})}
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                   />
+                </div>
+
+                {isOverlay && (
+                   <div className="flex gap-3 mt-4">
+                      <Button onClick={saveTaskChanges} className="flex-1">保存</Button>
+                      <Button variant="secondary" onClick={cancelEditing} className="flex-1">取消</Button>
+                   </div>
+                )}
+             </div>
+          ) : (
+            /* View Mode Details */
+            <>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">优先级分类</span>
+                  <span className={`font-bold text-base px-3 py-1 rounded-full bg-opacity-10 border
+                    ${task.quadrant === 'Do' ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-400/10 border-blue-200 dark:border-blue-400/30' : 
+                      task.quadrant === 'Plan' ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-400/10 border-emerald-200 dark:border-emerald-400/30' : 
+                      task.quadrant === 'Delegate' ? 'text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 border-amber-200 dark:border-amber-400/30' : 'text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-400/10 border-rose-200 dark:border-rose-400/30'}`}>
+                    {task.quadrant}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">截止日期</span>
+                  <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-base">{task.estimatedTime}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/30 p-5 rounded-lg border border-slate-200 dark:border-slate-800">
+                <div className="text-xs text-slate-500 mb-2 uppercase tracking-wider font-bold">分类逻辑</div>
+                <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm">"{task.reasoning}"</div>
+              </div>
+
+              <div>
+                <div className="text-xs text-blue-600 dark:text-blue-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <ListTodo className="w-4 h-4" /> 执行步骤
+                </div>
+                <ul className="space-y-3">
+                  {task.steps.map((step, i) => (
+                    <li key={i} className="flex gap-3 text-slate-700 dark:text-slate-300 text-sm">
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-mono shrink-0 font-bold">{i+1}</span>
+                      <span className={`leading-snug ${task.isCompleted ? 'line-through opacity-60' : ''}`}>{step}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <div className="text-xs text-indigo-600 dark:text-indigo-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <BrainCircuit className="w-4 h-4" /> 智能建议与策略
+                </div>
+                <div className="text-slate-900 dark:text-indigo-100 text-sm leading-relaxed bg-indigo-50/80 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700/50 shadow-sm">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
+                    <span className="whitespace-pre-wrap font-medium dark:font-normal">{task.advice}</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </Card>
+    );
+  };
 
   // --- Views ---
 
@@ -592,7 +744,7 @@ const App: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 relative items-start">
         {/* Matrix Section */}
         <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} transition-all duration-500 ease-in-out`}>
-          <Matrix tasks={state.tasks} onTaskClick={setSelectedTask} />
+          <Matrix tasks={state.tasks} onTaskClick={selectTask} />
         </div>
 
         {/* Desktop Sidebar Task Detail - Sticky Position */}
@@ -614,7 +766,7 @@ const App: React.FC = () => {
               {renderTaskDetail(selectedTask, true)}
             </div>
           </div>
-          <div className="absolute inset-0 -z-10" onClick={() => setSelectedTask(null)}></div>
+          <div className="absolute inset-0 -z-10" onClick={() => { setSelectedTask(null); setIsEditingTask(false); }}></div>
         </div>
       )}
     </div>
