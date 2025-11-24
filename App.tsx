@@ -479,7 +479,7 @@ const App: React.FC = () => {
         <h3 className={`text-xl font-bold leading-tight ${task.isCompleted ? 'text-slate-400 line-through decoration-slate-400' : 'text-slate-900 dark:text-white'}`}>{task.name}</h3>
       </div>
       
-      <div className="space-y-6 text-sm flex-1 overflow-y-auto custom-scrollbar pr-1 min-h-0">
+      <div className="space-y-6 text-sm flex-1 overflow-y-auto custom-scrollbar pr-1 pb-6 min-h-0">
         <button 
           onClick={() => toggleTaskCompletion(task)}
           className={`w-full py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border
@@ -597,7 +597,7 @@ const App: React.FC = () => {
 
         {/* Desktop Sidebar Task Detail - Sticky Position */}
         {selectedTask && (
-          <div className="hidden lg:block lg:col-span-1 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-hidden rounded-xl animate-in slide-in-from-right-8 fade-in duration-300">
+          <div className="hidden lg:block lg:col-span-1 sticky top-24 self-start h-[calc(100vh-120px)] rounded-xl animate-in slide-in-from-right-8 fade-in duration-300 shadow-2xl shadow-slate-200/50 dark:shadow-none">
             {renderTaskDetail(selectedTask)}
           </div>
         )}
