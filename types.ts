@@ -16,13 +16,18 @@ export interface Question {
   text: string;
 }
 
+export interface BilingualText {
+  cn: string;
+  en: string;
+}
+
 export interface AnalysisResult {
   quadrant: QuadrantType;
   isImportant: boolean;
   isUrgent: boolean;
-  reasoning: string;
-  steps: string[];
-  advice: string;
+  reasoning: BilingualText | string; // Supports legacy string or new bilingual object
+  steps: (BilingualText | string)[]; 
+  advice: BilingualText | string;
 }
 
 export interface Task extends AnalysisResult {
@@ -32,6 +37,20 @@ export interface Task extends AnalysisResult {
   createdAt: number;
   isCompleted?: boolean;
   completedAt?: number;
+}
+
+// --- Batch Types ---
+export interface BatchTaskInput {
+  id: string; // Temporary ID
+  name: string;
+  estimatedTime: string;
+}
+
+export interface BatchAnalysisResult {
+  taskId: string;
+  quadrant: QuadrantType;
+  reasoning: BilingualText | string;
+  advice: BilingualText | string;
 }
 
 export type AIProvider = 'gemini' | 'siliconflow';
@@ -60,12 +79,23 @@ export interface UserSettings {
 
 export interface AppState {
   theme: 'light' | 'dark';
-  view: 'dashboard' | 'wizard' | 'settings' | 'stats'; 
+  language: 'zh' | 'en'; // New Language State
+  view: 'dashboard' | 'wizard' | 'batch-wizard' | 'settings' | 'stats'; 
+  
+  // Single Task Wizard State
   wizardStep: 'input' | 'assessment' | 'analyzing' | 'result';
   currentTaskInput: TaskInput | null;
   currentQuestions: Question[];
   currentAnswers: Record<string, boolean>; // Question ID -> Yes/No
   currentAnalysis: AnalysisResult | null;
+  
+  // Batch Task Wizard State
+  batchWizardStep: 'input' | 'assessment' | 'analyzing' | 'review';
+  batchInputs: BatchTaskInput[];
+  batchQuestions: Record<string, string[]>; // TaskID -> Array of Question Strings
+  batchAnswers: Record<string, Record<number, boolean>>; // TaskID -> QuestionIndex -> Yes/No
+  batchResults: BatchAnalysisResult[];
+
   error: string | null;
   tasks: Task[]; // List of saved tasks
   settings: UserSettings;

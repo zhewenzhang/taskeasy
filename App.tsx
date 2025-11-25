@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { AppState, TaskInput, Question, Task, UserSettings, QuadrantType } from './types';
-import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection } from './services/geminiService';
+import { AppState, TaskInput, Question, Task, UserSettings, QuadrantType, BatchTaskInput, BatchAnalysisResult, BilingualText } from './types';
+import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection, generateBatchAssessmentQuestions, analyzeBatchTasks } from './services/geminiService';
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle, Layers, CheckSquare, Languages } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   aiProvider: 'gemini',
@@ -26,6 +26,13 @@ const THINKING_MESSAGES = [
   "正在评估执行风险与机会...",
   "正在生成最佳执行策略...",
   "正在完善行动步骤细节..."
+];
+
+const BATCH_THINKING_MESSAGES = [
+  "正在批量扫描任务...",
+  "正在横向对比重要性...",
+  "正在生成矩阵分类...",
+  "正在优化执行优先级..."
 ];
 
 // --- Helper for Heatmap ---
@@ -186,6 +193,7 @@ const App: React.FC = () => {
     const savedTasks = localStorage.getItem('matrix_ai_tasks');
     const savedSettings = localStorage.getItem('matrix_ai_settings');
     const savedTheme = localStorage.getItem('matrix_ai_theme') as 'light' | 'dark' || 'dark';
+    const savedLang = localStorage.getItem('matrix_ai_lang') as 'zh' | 'en' || 'zh';
     
     const parsedSettings = savedSettings ? JSON.parse(savedSettings) : {};
     
@@ -202,6 +210,7 @@ const App: React.FC = () => {
 
     return {
       theme: savedTheme,
+      language: savedLang,
       view: 'dashboard',
       wizardStep: 'input',
       currentTaskInput: null,
@@ -211,7 +220,13 @@ const App: React.FC = () => {
       error: null,
       tasks: savedTasks ? JSON.parse(savedTasks) : [],
       settings: mergedSettings,
-      isSyncing: false
+      isSyncing: false,
+      // Batch Defaults
+      batchWizardStep: 'input',
+      batchInputs: [],
+      batchQuestions: {},
+      batchAnswers: {},
+      batchResults: []
     };
   });
 
@@ -220,6 +235,10 @@ const App: React.FC = () => {
   const [inputTime, setInputTime] = useState(''); 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [thinkingStep, setThinkingStep] = useState(0);
+
+  // Batch specific local state for input
+  const [batchRawInput, setBatchRawInput] = useState('');
+  const [batchCommonDate, setBatchCommonDate] = useState('');
 
   // Edit State
   const [isEditingTask, setIsEditingTask] = useState(false);
@@ -245,15 +264,20 @@ const App: React.FC = () => {
   }, [state.theme]);
 
   useEffect(() => {
+    localStorage.setItem('matrix_ai_lang', state.language);
+  }, [state.language]);
+
+  useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (state.wizardStep === 'analyzing') {
+    if (state.wizardStep === 'analyzing' || state.batchWizardStep === 'analyzing') {
       setThinkingStep(0);
+      const messages = state.view === 'batch-wizard' ? BATCH_THINKING_MESSAGES : THINKING_MESSAGES;
       interval = setInterval(() => {
-        setThinkingStep(prev => (prev + 1) % THINKING_MESSAGES.length);
+        setThinkingStep(prev => (prev + 1) % messages.length);
       }, 2000);
     }
     return () => clearInterval(interval);
-  }, [state.wizardStep]);
+  }, [state.wizardStep, state.batchWizardStep, state.view]);
 
   const refreshTasks = useCallback(async () => {
     if (isSupabaseConfigured) {
@@ -294,6 +318,16 @@ const App: React.FC = () => {
   const toggleTheme = () => {
     setState(prev => ({ ...prev, theme: prev.theme === 'dark' ? 'light' : 'dark' }));
   };
+  
+  const toggleLanguage = () => {
+    setState(prev => ({ ...prev, language: prev.language === 'zh' ? 'en' : 'zh' }));
+  };
+
+  const getLocalizedContent = (content: BilingualText | string | null | undefined): string => {
+    if (!content) return "";
+    if (typeof content === 'string') return content;
+    return content[state.language] || content['cn'] || ""; // Fallback to CN
+  };
 
   const startNewTask = () => {
     setState(prev => ({ 
@@ -313,7 +347,24 @@ const App: React.FC = () => {
     setIsEditingTask(false);
   };
 
-  const navigateTo = (view: 'dashboard' | 'wizard' | 'settings' | 'stats') => {
+  const startBatchTask = () => {
+    setState(prev => ({
+       ...prev,
+       view: 'batch-wizard',
+       batchWizardStep: 'input',
+       batchInputs: [],
+       batchQuestions: {},
+       batchAnswers: {},
+       batchResults: [],
+       error: null
+    }));
+    setBatchRawInput('');
+    const today = new Date().toISOString().split('T')[0];
+    setBatchCommonDate(today);
+    setSelectedTask(null);
+  };
+
+  const navigateTo = (view: 'dashboard' | 'wizard' | 'batch-wizard' | 'settings' | 'stats') => {
     if (view === 'settings') {
       setTempSettings(state.settings);
       setConnectionStatus('idle');
@@ -440,12 +491,6 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, settings: tempSettings, view: 'dashboard' }));
   };
 
-  const testSupabaseConnection = async () => {
-    setConnectionStatus('testing');
-    const success = await supabaseService.testConnection(tempSettings);
-    setConnectionStatus(success ? 'success' : 'failed');
-  };
-
   const handleTestAIConnection = async () => {
     setAiConnectionStatus('testing');
     const success = await testAIConnection(tempSettings);
@@ -458,6 +503,8 @@ const App: React.FC = () => {
     const dateString = date.toISOString().split('T')[0];
     setInputTime(dateString);
   };
+
+  // --- Single Task Workflow ---
 
   const handleStartAssessment = async () => {
     if (!inputName || !inputTime) return;
@@ -508,6 +555,109 @@ const App: React.FC = () => {
 
   const toggleAnswer = (id: string, value: boolean) => {
     setState(prev => ({ ...prev, currentAnswers: { ...prev.currentAnswers, [id]: value } }));
+  };
+
+  // --- Batch Task Workflow ---
+
+  const handleBatchStep1Submit = async () => {
+    if (!batchRawInput.trim() || !batchCommonDate) return;
+    setIsLoading(true);
+    
+    // Parse Input
+    const taskLines = batchRawInput.split('\n').filter(l => l.trim().length > 0);
+    const batchInputs: BatchTaskInput[] = taskLines.map((line, idx) => ({
+      id: `temp-${idx}`,
+      name: line.trim(),
+      estimatedTime: batchCommonDate
+    }));
+
+    try {
+      const questionMap = await generateBatchAssessmentQuestions(batchInputs, state.settings);
+      setState(prev => ({
+        ...prev,
+        batchInputs,
+        batchQuestions: questionMap,
+        batchWizardStep: 'assessment'
+      }));
+    } catch (error) {
+       setState(prev => ({...prev, error: `批量生成失败: ${(error as Error).message}`}));
+    } finally {
+       setIsLoading(false);
+    }
+  };
+
+  const toggleBatchAnswer = (taskId: string, questionIdx: number, val: boolean) => {
+     setState(prev => {
+        const currentTaskAnswers = prev.batchAnswers[taskId] || {};
+        return {
+           ...prev,
+           batchAnswers: {
+              ...prev.batchAnswers,
+              [taskId]: {
+                 ...currentTaskAnswers,
+                 [questionIdx]: val
+              }
+           }
+        };
+     });
+  };
+
+  const handleBatchAnalyze = async () => {
+     setIsLoading(true);
+     setState(prev => ({...prev, batchWizardStep: 'analyzing', error: null}));
+     try {
+       const results = await analyzeBatchTasks(
+         state.batchInputs,
+         state.batchQuestions,
+         state.batchAnswers,
+         state.settings
+       );
+       setState(prev => ({...prev, batchWizardStep: 'review', batchResults: results}));
+     } catch (error) {
+       setState(prev => ({...prev, batchWizardStep: 'assessment', error: `批量分析失败: ${(error as Error).message}`}));
+     } finally {
+       setIsLoading(false);
+     }
+  };
+
+  const updateBatchResultQuadrant = (taskId: string, newQuad: QuadrantType) => {
+     setState(prev => ({
+        ...prev,
+        batchResults: prev.batchResults.map(r => r.taskId === taskId ? {...r, quadrant: newQuad} : r)
+     }));
+  };
+
+  const saveBatchTasks = async () => {
+     const newTasks: Task[] = [];
+     
+     // Merge inputs and results
+     state.batchResults.forEach(res => {
+        const input = state.batchInputs.find(i => i.id === res.taskId);
+        if (input) {
+           newTasks.push({
+              id: crypto.randomUUID(),
+              name: input.name,
+              estimatedTime: input.estimatedTime,
+              createdAt: Date.now(),
+              isCompleted: false,
+              quadrant: res.quadrant,
+              reasoning: res.reasoning,
+              advice: res.advice,
+              steps: [], // Placeholder for batch as we don't generate deep steps for batch to save tokens
+              isImportant: res.quadrant === QuadrantType.DO || res.quadrant === QuadrantType.PLAN,
+              isUrgent: res.quadrant === QuadrantType.DO || res.quadrant === QuadrantType.DELEGATE
+           });
+        }
+     });
+
+     setState(prev => ({...prev, tasks: [...prev.tasks, ...newTasks], view: 'dashboard'}));
+
+     if (isSupabaseConfigured) {
+        // Upload one by one to avoid race conditions or use a batch insert if configured in Supabase (simplified here)
+        for (const t of newTasks) {
+           try { await supabaseService.addTask(t, state.settings); } catch (e) { console.error(e); }
+        }
+     }
   };
 
   // --- Render Components ---
@@ -673,7 +823,9 @@ const App: React.FC = () => {
 
               <div className="bg-slate-50 dark:bg-slate-900/30 p-5 rounded-lg border border-slate-200 dark:border-slate-800">
                 <div className="text-xs text-slate-500 mb-2 uppercase tracking-wider font-bold">分类逻辑</div>
-                <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm">"{task.reasoning}"</div>
+                <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm">
+                  {getLocalizedContent(task.reasoning)}
+                </div>
               </div>
 
               <div>
@@ -684,7 +836,9 @@ const App: React.FC = () => {
                   {task.steps.map((step, i) => (
                     <li key={i} className="flex gap-3 text-slate-700 dark:text-slate-300 text-sm">
                       <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-mono shrink-0 font-bold">{i+1}</span>
-                      <span className={`leading-snug ${task.isCompleted ? 'line-through opacity-60' : ''}`}>{step}</span>
+                      <span className={`leading-snug ${task.isCompleted ? 'line-through opacity-60' : ''}`}>
+                        {getLocalizedContent(step)}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -697,7 +851,9 @@ const App: React.FC = () => {
                 <div className="text-slate-900 dark:text-indigo-100 text-sm leading-relaxed bg-indigo-50/80 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700/50 shadow-sm">
                   <div className="flex items-start gap-2">
                     <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
-                    <span className="whitespace-pre-wrap font-medium dark:font-normal">{task.advice}</span>
+                    <span className="whitespace-pre-wrap font-medium dark:font-normal">
+                      {getLocalizedContent(task.advice)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -706,6 +862,179 @@ const App: React.FC = () => {
         </div>
       </Card>
     );
+  };
+
+  const renderBatchWizard = () => {
+     if (state.batchWizardStep === 'input') {
+        return (
+           <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8">
+             <div className="text-center mb-8">
+               <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-500/10">
+                 <Layers className="w-8 h-8" />
+               </div>
+               <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">批量任务录入</h2>
+               <p className="text-slate-500 dark:text-slate-400">一次性输入多个任务，AI 将协助您快速进行批量分类。</p>
+             </div>
+             
+             <Card className="shadow-xl">
+               <TextArea 
+                 label="任务列表 (一行一个)" 
+                 placeholder="例如：&#10;修复首页 Bug&#10;准备周会 PPT&#10;给客户打电话"
+                 value={batchRawInput}
+                 onChange={(e) => setBatchRawInput(e.target.value)}
+                 className="min-h-[200px] font-mono text-sm leading-relaxed"
+               />
+               <InputField 
+                 label="统一截止日期" 
+                 type="date" 
+                 value={batchCommonDate}
+                 onChange={(e) => setBatchCommonDate(e.target.value)}
+               />
+               <div className="flex gap-4 mt-6">
+                 <Button variant="secondary" onClick={() => navigateTo('dashboard')} className="flex-1">取消</Button>
+                 <Button onClick={handleBatchStep1Submit} disabled={!batchRawInput.trim()} isLoading={isLoading} className="flex-[2] bg-emerald-600 hover:bg-emerald-700">
+                   下一步：生成评估问题
+                 </Button>
+               </div>
+             </Card>
+           </div>
+        );
+     }
+
+     if (state.batchWizardStep === 'assessment') {
+        return (
+           <div className="max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-right-8">
+              <div className="flex items-center justify-between mb-6">
+                 <div>
+                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">批量评估</h2>
+                    <p className="text-slate-500 text-sm">请回答以下情境问题以辅助 AI 判断</p>
+                 </div>
+                 <div className="text-sm font-bold bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
+                    {Object.keys(state.batchAnswers).length}/{state.batchInputs.length} 已填写
+                 </div>
+              </div>
+
+              <div className="space-y-4 mb-8">
+                 {state.batchInputs.map((task) => {
+                    const questions = state.batchQuestions[task.id] || [];
+                    const answers = state.batchAnswers[task.id] || {};
+                    // Updated logic: Check for 3 answers (indexes 0, 1, 2)
+                    const isFullyAnswered = answers[0] !== undefined && answers[1] !== undefined && answers[2] !== undefined;
+
+                    return (
+                       <div key={task.id} className={`p-4 rounded-xl border transition-all ${isFullyAnswered ? 'bg-slate-50 dark:bg-slate-900/30 border-emerald-500/30' : 'bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-700 shadow-sm'}`}>
+                          <div className="font-bold text-lg mb-3 text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                             {isFullyAnswered && <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                             {task.name}
+                          </div>
+                          {/* Changed to vertical stack for longer guided questions */}
+                          <div className="grid grid-cols-1 gap-3">
+                             {questions.map((q, idx) => (
+                                <div key={idx} className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/50 p-2.5 rounded-lg">
+                                   <span className="text-xs md:text-sm text-slate-600 dark:text-slate-400 mr-2 flex-1 leading-tight">{q}</span>
+                                   <div className="flex gap-1 shrink-0">
+                                      <button 
+                                        onClick={() => toggleBatchAnswer(task.id, idx, true)}
+                                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${answers[idx] === true ? 'bg-blue-600 text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-400 border border-slate-200 dark:border-slate-600'}`}
+                                      >
+                                        Yes
+                                      </button>
+                                      <button 
+                                        onClick={() => toggleBatchAnswer(task.id, idx, false)}
+                                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${answers[idx] === false ? 'bg-slate-600 text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-400 border border-slate-200 dark:border-slate-600'}`}
+                                      >
+                                        No
+                                      </button>
+                                   </div>
+                                </div>
+                             ))}
+                          </div>
+                       </div>
+                    );
+                 })}
+              </div>
+              
+              {state.error && <div className="text-rose-500 mb-4 p-4 bg-rose-50 rounded-lg">{state.error}</div>}
+
+              <div className="flex gap-4 pb-10">
+                 <Button variant="secondary" onClick={() => setState(prev => ({...prev, batchWizardStep: 'input'}))}>上一步</Button>
+                 <Button onClick={handleBatchAnalyze} isLoading={isLoading} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+                    <Sparkles className="w-4 h-4 mr-2" /> 生成分析矩阵
+                 </Button>
+              </div>
+           </div>
+        );
+     }
+
+     if (state.batchWizardStep === 'analyzing') {
+        return (
+          <div className="max-w-md mx-auto w-full text-center pt-20 animate-in fade-in">
+             <div className="relative w-32 h-32 mx-auto mb-8">
+                <div className="absolute inset-0 border-4 border-slate-100 dark:border-slate-800 rounded-full"></div>
+                <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Layers className="w-12 h-12 text-emerald-500 animate-pulse" />
+                </div>
+             </div>
+             <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4 animate-pulse">AI 正在批量处理</h3>
+             <div className="h-8 overflow-hidden relative">
+               {BATCH_THINKING_MESSAGES.map((msg, idx) => (
+                  <p key={idx} className={`absolute w-full text-slate-500 transition-all duration-500 transform ${idx === thinkingStep ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+                    {msg}
+                  </p>
+               ))}
+             </div>
+          </div>
+        );
+     }
+
+     if (state.batchWizardStep === 'review') {
+        return (
+           <div className="max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8">
+              <div className="flex items-center justify-between mb-6">
+                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">结果确认</h2>
+                 <Button onClick={saveBatchTasks} className="bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/20">
+                    <Save className="w-4 h-4 mr-2" /> 全部保存
+                 </Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-10">
+                 {state.batchResults.map((res) => {
+                    const input = state.batchInputs.find(i => i.id === res.taskId);
+                    return (
+                       <div key={res.taskId} className="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm flex flex-col">
+                          <div className="flex justify-between items-start mb-2">
+                             <h4 className="font-bold text-lg text-slate-900 dark:text-white line-clamp-1" title={input?.name}>{input?.name}</h4>
+                             <select 
+                                value={res.quadrant}
+                                onChange={(e) => updateBatchResultQuadrant(res.taskId, e.target.value as QuadrantType)}
+                                className={`text-xs font-bold px-2 py-1 rounded border outline-none cursor-pointer ${
+                                   res.quadrant === QuadrantType.DO ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                   res.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                   res.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                   'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}
+                             >
+                                <option value={QuadrantType.DO}>Do</option>
+                                <option value={QuadrantType.PLAN}>Plan</option>
+                                <option value={QuadrantType.DELEGATE}>Delegate</option>
+                                <option value={QuadrantType.ELIMINATE}>Eliminate</option>
+                             </select>
+                          </div>
+                          <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded text-xs text-slate-600 dark:text-slate-400 mb-2">
+                             <span className="font-bold">理由:</span> {getLocalizedContent(res.reasoning)}
+                          </div>
+                          <div className="mt-auto flex items-start gap-2 text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded border border-indigo-100 dark:border-indigo-800">
+                             <Sparkles className="w-3 h-3 mt-0.5 shrink-0" />
+                             {getLocalizedContent(res.advice)}
+                          </div>
+                       </div>
+                    );
+                 })}
+              </div>
+           </div>
+        );
+     }
   };
 
   // --- Views ---
@@ -736,6 +1065,10 @@ const App: React.FC = () => {
           </Button>
           <Button onClick={startNewTask} className="flex-1 md:flex-none !py-2.5 !px-5">
             <Plus className="w-5 h-5 mr-2 inline" /> <span className="hidden md:inline">新建任务</span><span className="md:hidden">新建</span>
+          </Button>
+          {/* New Batch Create Button */}
+          <Button onClick={startBatchTask} className="flex-1 md:flex-none !py-2.5 !px-5 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30">
+            <Layers className="w-5 h-5 mr-2 inline" /> <span className="hidden md:inline">批量新建</span><span className="md:hidden">批量</span>
           </Button>
         </div>
       </div>
@@ -1255,11 +1588,11 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                    <div className="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200 dark:border-slate-800">
                       <div className="text-xs text-slate-500 uppercase font-bold mb-2">分析理由</div>
-                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{previewTask.reasoning}</p>
+                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{getLocalizedContent(previewTask.reasoning)}</p>
                    </div>
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200 dark:border-slate-800">
                       <div className="text-xs text-slate-500 uppercase font-bold mb-2">核心建议</div>
-                      <p className="text-slate-800 dark:text-indigo-200 font-medium leading-relaxed">{previewTask.advice}</p>
+                      <p className="text-slate-800 dark:text-indigo-200 font-medium leading-relaxed">{getLocalizedContent(previewTask.advice)}</p>
                    </div>
                 </div>
 
@@ -1271,7 +1604,7 @@ const App: React.FC = () => {
                       {previewTask.steps.map((s, i) => (
                         <div key={i} className="flex items-start gap-4 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold shrink-0">{i+1}</span>
-                           <span className="text-slate-700 dark:text-slate-300">{s}</span>
+                           <span className="text-slate-700 dark:text-slate-300">{getLocalizedContent(s)}</span>
                         </div>
                       ))}
                    </div>
@@ -1298,6 +1631,13 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 md:gap-4">
+             <button
+               onClick={toggleLanguage}
+               className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors font-bold text-xs w-9 h-9 flex items-center justify-center"
+               title="Switch Language"
+             >
+               {state.language === 'zh' ? '中' : 'En'}
+             </button>
              <button 
                onClick={toggleTheme} 
                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
@@ -1321,6 +1661,11 @@ const App: React.FC = () => {
         {state.view === 'wizard' && (
            <div className="h-full flex flex-col justify-center py-10">
              {renderWizard()}
+           </div>
+        )}
+        {state.view === 'batch-wizard' && (
+           <div className="h-full flex flex-col justify-center py-10">
+             {renderBatchWizard()}
            </div>
         )}
         {state.view === 'settings' && renderSettings()}
