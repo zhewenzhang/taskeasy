@@ -80,7 +80,7 @@ export interface UserSettings {
 export interface AppState {
   theme: 'light' | 'dark';
   language: 'zh' | 'en'; // New Language State
-  view: 'dashboard' | 'wizard' | 'batch-wizard' | 'settings' | 'stats'; 
+  view: 'dashboard' | 'wizard' | 'batch-wizard' | 'settings' | 'stats' | 'completed-tasks'; 
   
   // Single Task Wizard State
   wizardStep: 'input' | 'assessment' | 'analyzing' | 'result';

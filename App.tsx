@@ -5,7 +5,7 @@ import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection, g
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle, Layers, CheckSquare, Languages } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle, Layers, CheckSquare, Languages, Archive, Filter, ListFilter } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   aiProvider: 'gemini',
@@ -236,6 +236,12 @@ const App: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [thinkingStep, setThinkingStep] = useState(0);
 
+  // Filter State
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('all');
+  const [filterTimeRange, setFilterTimeRange] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+
   // Batch specific local state for input
   const [batchRawInput, setBatchRawInput] = useState('');
   const [batchCommonDate, setBatchCommonDate] = useState('');
@@ -364,7 +370,7 @@ const App: React.FC = () => {
     setSelectedTask(null);
   };
 
-  const navigateTo = (view: 'dashboard' | 'wizard' | 'batch-wizard' | 'settings' | 'stats') => {
+  const navigateTo = (view: 'dashboard' | 'wizard' | 'batch-wizard' | 'settings' | 'stats' | 'completed-tasks') => {
     if (view === 'settings') {
       setTempSettings(state.settings);
       setConnectionStatus('idle');
@@ -378,6 +384,64 @@ const App: React.FC = () => {
     setSelectedTask(task);
     setIsEditingTask(false);
   };
+
+  // --- Filter Logic ---
+  const filteredTasks = useMemo(() => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Helper to get start/end of current week (Monday start)
+    const getWeekBounds = () => {
+       const d = new Date();
+       const day = d.getDay();
+       const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+       const start = new Date(d.setDate(diff));
+       start.setHours(0,0,0,0);
+       
+       const end = new Date(start);
+       end.setDate(start.getDate() + 6);
+       end.setHours(23,59,59,999);
+       return { start, end };
+    };
+    
+    const { start: weekStart, end: weekEnd } = getWeekBounds();
+
+    return state.tasks.filter(task => {
+       // 1. Status Filter
+       if (filterStatus === 'active' && task.isCompleted) return false;
+       if (filterStatus === 'completed' && !task.isCompleted) return false;
+
+       // 2. Time Range Filter
+       if (filterTimeRange === 'all') return true;
+       
+       const taskDateStr = task.estimatedTime; // YYYY-MM-DD
+       if (!taskDateStr) return false; // Should have date
+
+       if (filterTimeRange === 'today') {
+          return taskDateStr === todayStr;
+       }
+
+       const taskDate = new Date(taskDateStr);
+       // Reset task date time to avoid timezone issues when comparing just dates
+       
+       if (filterTimeRange === 'week') {
+          // Check if date is within this week
+          return taskDate >= weekStart && taskDate <= weekEnd;
+       }
+
+       if (filterTimeRange === 'month') {
+          return taskDate.getMonth() === today.getMonth() && taskDate.getFullYear() === today.getFullYear();
+       }
+
+       if (filterTimeRange === 'custom') {
+          if (filterStartDate && taskDateStr < filterStartDate) return false;
+          if (filterEndDate && taskDateStr > filterEndDate) return false;
+          return true;
+       }
+
+       return true;
+    });
+  }, [state.tasks, filterStatus, filterTimeRange, filterStartDate, filterEndDate]);
 
   // --- Edit Actions ---
 
@@ -1042,7 +1106,7 @@ const App: React.FC = () => {
   const renderDashboard = () => (
     <div className="w-full animate-in fade-in duration-500 flex flex-col min-h-full pb-10">
       {/* Dashboard Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 px-1 gap-4 shrink-0">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 px-1 gap-4 shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">任务矩阵看板</h2>
           <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -1060,6 +1124,9 @@ const App: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
+          <Button variant="secondary" onClick={() => navigateTo('completed-tasks')} className="flex-1 md:flex-none !py-2.5 !px-4">
+            <Archive className="w-5 h-5 mr-2 inline" /> <span className="hidden md:inline">已完成</span><span className="md:hidden">历史</span>
+          </Button>
           <Button variant="secondary" onClick={() => navigateTo('stats')} className="flex-1 md:flex-none !py-2.5 !px-4">
             <BarChart3 className="w-5 h-5 mr-2 inline" /> <span className="hidden md:inline">数据分析</span><span className="md:hidden">分析</span>
           </Button>
@@ -1073,11 +1140,78 @@ const App: React.FC = () => {
         </div>
       </div>
 
+      {/* Filter Toolbar */}
+      <div className="mb-6 flex flex-wrap items-center gap-4 bg-white dark:bg-[#1e293b] p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+         <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm font-bold px-2">
+            <Filter className="w-4 h-4" /> 过滤:
+         </div>
+         
+         {/* Status Filter */}
+         <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">状态</span>
+            <select 
+               value={filterStatus}
+               onChange={(e) => setFilterStatus(e.target.value as any)}
+               className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            >
+               <option value="all">全部 (All)</option>
+               <option value="active">未完成 (Active)</option>
+               <option value="completed">已完成 (Completed)</option>
+            </select>
+         </div>
+
+         <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+
+         {/* Time Filter */}
+         <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">时间范围</span>
+            <select 
+               value={filterTimeRange}
+               onChange={(e) => setFilterTimeRange(e.target.value as any)}
+               className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            >
+               <option value="all">全部 (All)</option>
+               <option value="today">今天 (Today)</option>
+               <option value="week">本周 (This Week)</option>
+               <option value="month">本月 (This Month)</option>
+               <option value="custom">自定义范围 (Custom Range)</option>
+            </select>
+         </div>
+
+         {/* Custom Range Inputs */}
+         {filterTimeRange === 'custom' && (
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4">
+               <input 
+                  type="date"
+                  value={filterStartDate}
+                  onChange={(e) => setFilterStartDate(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+               />
+               <span className="text-slate-400">-</span>
+               <input 
+                  type="date"
+                  value={filterEndDate}
+                  onChange={(e) => setFilterEndDate(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+               />
+            </div>
+         )}
+         
+         {(filterStatus !== 'all' || filterTimeRange !== 'all') && (
+            <button 
+               onClick={() => { setFilterStatus('all'); setFilterTimeRange('all'); setFilterStartDate(''); setFilterEndDate(''); }}
+               className="ml-auto text-xs text-rose-500 hover:text-rose-600 font-medium px-2 py-1 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded transition-colors"
+            >
+               清除过滤
+            </button>
+         )}
+      </div>
+
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 relative items-start">
         {/* Matrix Section */}
         <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} transition-all duration-500 ease-in-out`}>
-          <Matrix tasks={state.tasks} onTaskClick={selectTask} />
+          <Matrix tasks={filteredTasks} onTaskClick={selectTask} />
         </div>
 
         {/* Desktop Sidebar Task Detail - Sticky Position */}
@@ -1104,6 +1238,87 @@ const App: React.FC = () => {
       )}
     </div>
   );
+
+  const renderCompletedTasks = () => {
+    const completedTasks = state.tasks.filter(t => t.isCompleted).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  
+    return (
+      <div className="w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 sticky top-16 md:top-20 z-30 bg-slate-50/95 dark:bg-[#0f172a]/95 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="mb-4 md:mb-0">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">已完成任务档案</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">Completed Tasks Archive</p>
+          </div>
+          <div className="flex gap-3 w-full md:w-auto">
+            <Button variant="secondary" onClick={() => navigateTo('dashboard')} className="w-full md:w-auto">
+              <ChevronLeft className="w-4 h-4 mr-2" /> 返回看板
+            </Button>
+          </div>
+        </div>
+  
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th className="px-6 py-4 font-bold whitespace-nowrap">任务名称</th>
+                  <th className="px-6 py-4 font-bold whitespace-nowrap">所属象限</th>
+                  <th className="px-6 py-4 font-bold whitespace-nowrap">截止日期</th>
+                  <th className="px-6 py-4 font-bold whitespace-nowrap">完成日期</th>
+                  <th className="px-6 py-4 font-bold whitespace-nowrap">耗时 (天)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {completedTasks.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500 italic">
+                      暂无已完成任务
+                    </td>
+                  </tr>
+                ) : (
+                  completedTasks.map((task) => {
+                    const created = new Date(task.createdAt);
+                    const completed = task.completedAt ? new Date(task.completedAt) : new Date(); 
+                    const durationMs = completed.getTime() - created.getTime();
+                    const durationDays = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
+                    const completedDateStr = task.completedAt ? new Date(task.completedAt).toLocaleDateString() : '-';
+  
+                    return (
+                      <tr key={task.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white max-w-xs truncate" title={task.name}>
+                          {task.name}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded text-xs font-bold border ${
+                            task.quadrant === QuadrantType.DO ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            task.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            {task.quadrant}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
+                          {task.estimatedTime}
+                        </td>
+                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
+                          {completedDateStr}
+                        </td>
+                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
+                          {durationDays} 天
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    );
+  };
 
   const renderStats = () => {
     const total = state.tasks.length;
@@ -1670,6 +1885,7 @@ const App: React.FC = () => {
         )}
         {state.view === 'settings' && renderSettings()}
         {state.view === 'stats' && renderStats()}
+        {state.view === 'completed-tasks' && renderCompletedTasks()}
       </main>
     </div>
   );
