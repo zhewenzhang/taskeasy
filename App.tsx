@@ -5,7 +5,7 @@ import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection, g
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle, Layers, CheckSquare, Languages, Archive, Filter, ListFilter } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle, Layers, CheckSquare, Languages, Archive, Filter, ListFilter, Clock } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   aiProvider: 'gemini',
@@ -931,7 +931,7 @@ const App: React.FC = () => {
   const renderBatchWizard = () => {
      if (state.batchWizardStep === 'input') {
         return (
-           <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8">
+           <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 p-4 md:p-0">
              <div className="text-center mb-8">
                <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-500/10">
                  <Layers className="w-8 h-8" />
@@ -967,7 +967,7 @@ const App: React.FC = () => {
 
      if (state.batchWizardStep === 'assessment') {
         return (
-           <div className="max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-right-8">
+           <div className="max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-right-8 p-4 md:p-0">
               <div className="flex items-center justify-between mb-6">
                  <div>
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white">批量评估</h2>
@@ -1054,7 +1054,7 @@ const App: React.FC = () => {
 
      if (state.batchWizardStep === 'review') {
         return (
-           <div className="max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8">
+           <div className="max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 p-4 md:p-0">
               <div className="flex items-center justify-between mb-6">
                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">结果确认</h2>
                  <Button onClick={saveBatchTasks} className="bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/20">
@@ -1123,36 +1123,37 @@ const App: React.FC = () => {
             {state.isSyncing && <span className="text-blue-500 animate-pulse text-xs">同步中...</span>}
           </div>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
+        
+        {/* Mobile: Grid Actions / Desktop: Row Actions */}
+        <div className="grid grid-cols-2 gap-3 w-full md:flex md:w-auto">
           <Button variant="secondary" onClick={() => navigateTo('completed-tasks')} className="flex-1 md:flex-none !py-2.5 !px-4">
-            <Archive className="w-5 h-5 mr-2 inline" /> <span className="hidden md:inline">已完成</span><span className="md:hidden">历史</span>
+            <Archive className="w-5 h-5 mr-2 inline" /> <span className="inline md:hidden">历史</span><span className="hidden md:inline">已完成</span>
           </Button>
           <Button variant="secondary" onClick={() => navigateTo('stats')} className="flex-1 md:flex-none !py-2.5 !px-4">
-            <BarChart3 className="w-5 h-5 mr-2 inline" /> <span className="hidden md:inline">数据分析</span><span className="md:hidden">分析</span>
+            <BarChart3 className="w-5 h-5 mr-2 inline" /> <span className="inline md:hidden">分析</span><span className="hidden md:inline">数据分析</span>
           </Button>
           <Button onClick={startNewTask} className="flex-1 md:flex-none !py-2.5 !px-5">
-            <Plus className="w-5 h-5 mr-2 inline" /> <span className="hidden md:inline">新建任务</span><span className="md:hidden">新建</span>
+            <Plus className="w-5 h-5 mr-2 inline" /> <span className="inline md:hidden">新建</span><span className="hidden md:inline">新建任务</span>
           </Button>
-          {/* New Batch Create Button */}
           <Button onClick={startBatchTask} className="flex-1 md:flex-none !py-2.5 !px-5 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30">
-            <Layers className="w-5 h-5 mr-2 inline" /> <span className="hidden md:inline">批量新建</span><span className="md:hidden">批量</span>
+            <Layers className="w-5 h-5 mr-2 inline" /> <span className="inline md:hidden">批量</span><span className="hidden md:inline">批量新建</span>
           </Button>
         </div>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="mb-6 flex flex-wrap items-center gap-4 bg-white dark:bg-[#1e293b] p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center gap-4 bg-white dark:bg-[#1e293b] p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm font-bold px-2">
             <Filter className="w-4 h-4" /> 过滤:
          </div>
          
          {/* Status Filter */}
-         <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">状态</span>
+         <div className="flex flex-col md:flex-row md:items-center gap-2">
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider hidden md:inline">状态</span>
             <select 
                value={filterStatus}
                onChange={(e) => setFilterStatus(e.target.value as any)}
-               className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+               className="w-full md:w-auto bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
                <option value="all">全部 (All)</option>
                <option value="active">未完成 (Active)</option>
@@ -1160,15 +1161,15 @@ const App: React.FC = () => {
             </select>
          </div>
 
-         <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+         <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 hidden md:block"></div>
 
          {/* Time Filter */}
-         <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">时间范围</span>
+         <div className="flex flex-col md:flex-row md:items-center gap-2">
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider hidden md:inline">时间范围</span>
             <select 
                value={filterTimeRange}
                onChange={(e) => setFilterTimeRange(e.target.value as any)}
-               className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+               className="w-full md:w-auto bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
                <option value="all">全部 (All)</option>
                <option value="today">今天 (Today)</option>
@@ -1180,19 +1181,19 @@ const App: React.FC = () => {
 
          {/* Custom Range Inputs */}
          {filterTimeRange === 'custom' && (
-            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4">
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 w-full md:w-auto">
                <input 
                   type="date"
                   value={filterStartDate}
                   onChange={(e) => setFilterStartDate(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="flex-1 md:flex-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                />
                <span className="text-slate-400">-</span>
                <input 
                   type="date"
                   value={filterEndDate}
                   onChange={(e) => setFilterEndDate(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="flex-1 md:flex-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                />
             </div>
          )}
@@ -1257,64 +1258,105 @@ const App: React.FC = () => {
           </div>
         </div>
   
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="px-6 py-4 font-bold whitespace-nowrap">任务名称</th>
-                  <th className="px-6 py-4 font-bold whitespace-nowrap">所属象限</th>
-                  <th className="px-6 py-4 font-bold whitespace-nowrap">截止日期</th>
-                  <th className="px-6 py-4 font-bold whitespace-nowrap">完成日期</th>
-                  <th className="px-6 py-4 font-bold whitespace-nowrap">耗时 (天)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {completedTasks.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500 italic">
-                      暂无已完成任务
-                    </td>
-                  </tr>
-                ) : (
-                  completedTasks.map((task) => {
+        <Card className="overflow-hidden bg-transparent border-0 shadow-none">
+          {completedTasks.length === 0 ? (
+             <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#1e293b] rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                <Archive className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-4" />
+                <p className="text-slate-500 italic">暂无已完成任务</p>
+             </div>
+          ) : (
+            <>
+              {/* Mobile View: Cards */}
+              <div className="md:hidden space-y-4">
+                 {completedTasks.map((task) => {
                     const created = new Date(task.createdAt);
                     const completed = task.completedAt ? new Date(task.completedAt) : new Date(); 
                     const durationMs = completed.getTime() - created.getTime();
                     const durationDays = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
                     const completedDateStr = task.completedAt ? new Date(task.completedAt).toLocaleDateString() : '-';
-  
+
                     return (
-                      <tr key={task.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white max-w-xs truncate" title={task.name}>
-                          {task.name}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded text-xs font-bold border ${
-                            task.quadrant === QuadrantType.DO ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                            task.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                            task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                            'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}>
-                            {task.quadrant}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
-                          {task.estimatedTime}
-                        </td>
-                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
-                          {completedDateStr}
-                        </td>
-                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
-                          {durationDays} 天
-                        </td>
-                      </tr>
+                       <div key={task.id} className="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col gap-3">
+                          <div className="flex justify-between items-start">
+                             <h4 className="font-bold text-slate-900 dark:text-white text-base leading-tight line-clamp-2">{task.name}</h4>
+                             <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${
+                                task.quadrant === QuadrantType.DO ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                task.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                'bg-rose-50 text-rose-700 border-rose-200'
+                             }`}>
+                                {task.quadrant}
+                             </span>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400">
+                             <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded flex flex-col">
+                                <span className="uppercase text-[10px] font-bold opacity-70 mb-1">完成日期</span>
+                                <span className="font-mono text-slate-700 dark:text-slate-300">{completedDateStr}</span>
+                             </div>
+                             <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded flex flex-col">
+                                <span className="uppercase text-[10px] font-bold opacity-70 mb-1">耗时</span>
+                                <span className="font-mono text-slate-700 dark:text-slate-300">{durationDays} 天</span>
+                             </div>
+                          </div>
+                       </div>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                 })}
+              </div>
+
+              {/* Desktop View: Table */}
+              <div className="hidden md:block bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="px-6 py-4 font-bold whitespace-nowrap">任务名称</th>
+                      <th className="px-6 py-4 font-bold whitespace-nowrap">所属象限</th>
+                      <th className="px-6 py-4 font-bold whitespace-nowrap">截止日期</th>
+                      <th className="px-6 py-4 font-bold whitespace-nowrap">完成日期</th>
+                      <th className="px-6 py-4 font-bold whitespace-nowrap">耗时 (天)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {completedTasks.map((task) => {
+                        const created = new Date(task.createdAt);
+                        const completed = task.completedAt ? new Date(task.completedAt) : new Date(); 
+                        const durationMs = completed.getTime() - created.getTime();
+                        const durationDays = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
+                        const completedDateStr = task.completedAt ? new Date(task.completedAt).toLocaleDateString() : '-';
+      
+                        return (
+                          <tr key={task.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="px-6 py-4 font-medium text-slate-900 dark:text-white max-w-xs truncate" title={task.name}>
+                              {task.name}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 rounded text-xs font-bold border ${
+                                task.quadrant === QuadrantType.DO ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                task.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}>
+                                {task.quadrant}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
+                              {task.estimatedTime}
+                            </td>
+                            <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
+                              {completedDateStr}
+                            </td>
+                            <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
+                              {durationDays} 天
+                            </td>
+                          </tr>
+                        );
+                      })
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </Card>
       </div>
     );
@@ -1606,8 +1648,6 @@ const App: React.FC = () => {
             helperText="附加给 AI 的额外指令。"
           />
         </Card>
-        
-        {/* Supabase configuration hidden as requested since it is auto-configured */}
       </div>
     </div>
   );
@@ -1675,7 +1715,7 @@ const App: React.FC = () => {
 
     if (state.wizardStep === 'assessment') {
       return (
-        <div className="max-w-xl mx-auto w-full animate-in fade-in slide-in-from-right-8 duration-500">
+        <div className="max-w-xl mx-auto w-full animate-in fade-in slide-in-from-right-8 duration-500 p-4 md:p-0">
            <div className="flex items-center justify-between mb-6">
              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">任务评估</h2>
              <span className="text-sm font-mono bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full text-slate-500">AI Generated</span>
@@ -1774,7 +1814,7 @@ const App: React.FC = () => {
       };
 
       return (
-        <div className="max-w-3xl mx-auto w-full h-full flex flex-col animate-in zoom-in-95 duration-300 pb-8">
+        <div className="max-w-3xl mx-auto w-full h-full flex flex-col animate-in zoom-in-95 duration-300 pb-8 p-4 md:p-0">
            <div className="flex items-center justify-between mb-6">
              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">分析报告</h2>
              <div className="flex gap-2">
