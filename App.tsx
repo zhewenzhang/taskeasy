@@ -236,8 +236,8 @@ const App: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [thinkingStep, setThinkingStep] = useState(0);
 
-  // Filter State
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('all');
+  // Filter State - Default to 'active' instead of 'all'
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('active');
   const [filterTimeRange, setFilterTimeRange] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
