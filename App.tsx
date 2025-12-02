@@ -241,6 +241,7 @@ const App: React.FC = () => {
   const [filterTimeRange, setFilterTimeRange] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Batch specific local state for input
   const [batchRawInput, setBatchRawInput] = useState('');
@@ -1106,11 +1107,11 @@ const App: React.FC = () => {
   const renderDashboard = () => (
     <div className="w-full animate-in fade-in duration-500 flex flex-col min-h-full pb-10">
       {/* Dashboard Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 px-1 gap-4 shrink-0">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">任务矩阵看板</h2>
+      <div className="flex flex-row justify-between items-center mb-4 px-1 gap-4 shrink-0">
+        <div className="flex flex-col">
+          <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">任务矩阵看板</h2>
           <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
-            <span>Task Priority Matrix</span>
+            <span className="hidden md:inline">Task Priority Matrix</span>
             {isSupabaseConfigured ? (
                 <span className="flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50 text-xs">
                   <Cloud className="w-3 h-3 mr-1" /> Sync On
@@ -1124,25 +1125,41 @@ const App: React.FC = () => {
           </div>
         </div>
         
-        {/* Mobile: Grid Actions / Desktop: Row Actions */}
-        <div className="grid grid-cols-2 gap-3 w-full md:flex md:w-auto">
-          <Button variant="secondary" onClick={() => navigateTo('completed-tasks')} className="flex-1 md:flex-none !py-2.5 !px-4">
-            <Archive className="w-5 h-5 mr-2 inline" /> <span className="inline md:hidden">历史</span><span className="hidden md:inline">已完成</span>
+        {/* Mobile Header Actions (Icons) */}
+        <div className="flex md:hidden items-center gap-1">
+           <button onClick={() => navigateTo('stats')} className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
+              <BarChart3 className="w-5 h-5" />
+           </button>
+           <button onClick={() => navigateTo('completed-tasks')} className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
+              <Archive className="w-5 h-5" />
+           </button>
+           <button 
+            onClick={() => setShowMobileFilters(!showMobileFilters)} 
+            className={`p-2 rounded-full transition-colors ${showMobileFilters ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+           >
+              <Filter className="w-5 h-5" />
+           </button>
+        </div>
+
+        {/* Desktop Header Actions (Buttons) */}
+        <div className="hidden md:flex gap-3 w-auto">
+          <Button variant="secondary" onClick={() => navigateTo('completed-tasks')} className="!py-2.5 !px-4">
+            <Archive className="w-5 h-5 mr-2 inline" /> 已完成
           </Button>
-          <Button variant="secondary" onClick={() => navigateTo('stats')} className="flex-1 md:flex-none !py-2.5 !px-4">
-            <BarChart3 className="w-5 h-5 mr-2 inline" /> <span className="inline md:hidden">分析</span><span className="hidden md:inline">数据分析</span>
+          <Button variant="secondary" onClick={() => navigateTo('stats')} className="!py-2.5 !px-4">
+            <BarChart3 className="w-5 h-5 mr-2 inline" /> 数据分析
           </Button>
-          <Button onClick={startNewTask} className="flex-1 md:flex-none !py-2.5 !px-5">
-            <Plus className="w-5 h-5 mr-2 inline" /> <span className="inline md:hidden">新建</span><span className="hidden md:inline">新建任务</span>
+          <Button onClick={startNewTask} className="!py-2.5 !px-5">
+            <Plus className="w-5 h-5 mr-2 inline" /> 新建任务
           </Button>
-          <Button onClick={startBatchTask} className="flex-1 md:flex-none !py-2.5 !px-5 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30">
-            <Layers className="w-5 h-5 mr-2 inline" /> <span className="inline md:hidden">批量</span><span className="hidden md:inline">批量新建</span>
+          <Button onClick={startBatchTask} className="!py-2.5 !px-5 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30">
+            <Layers className="w-5 h-5 mr-2 inline" /> 批量新建
           </Button>
         </div>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center gap-4 bg-white dark:bg-[#1e293b] p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+      <div className={`mb-6 flex flex-col md:flex-row md:items-center gap-4 bg-white dark:bg-[#1e293b] p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300 overflow-hidden ${showMobileFilters ? 'max-h-[500px] opacity-100' : 'max-h-0 md:max-h-none opacity-0 md:opacity-100 p-0 md:p-3 border-0 md:border'}`}>
          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm font-bold px-2">
             <Filter className="w-4 h-4" /> 过滤:
          </div>
@@ -1209,9 +1226,9 @@ const App: React.FC = () => {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 relative items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 relative items-start flex-1">
         {/* Matrix Section */}
-        <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} transition-all duration-500 ease-in-out`}>
+        <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} h-full transition-all duration-500 ease-in-out`}>
           <Matrix tasks={filteredTasks} onTaskClick={selectTask} />
         </div>
 
@@ -1237,6 +1254,25 @@ const App: React.FC = () => {
           <div className="absolute inset-0 -z-10" onClick={() => { setSelectedTask(null); setIsEditingTask(false); }}></div>
         </div>
       )}
+
+      {/* Mobile Floating Action Buttons (FAB) */}
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3 md:hidden">
+         <button 
+            onClick={startBatchTask}
+            className="w-12 h-12 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 flex items-center justify-center transition-transform active:scale-95"
+            title="批量新建"
+         >
+            <Layers className="w-6 h-6" />
+         </button>
+         <button 
+            onClick={startNewTask}
+            className="w-14 h-14 rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/30 flex items-center justify-center transition-transform active:scale-95"
+            title="新建任务"
+         >
+            <Plus className="w-8 h-8" />
+         </button>
+      </div>
+
     </div>
   );
 
