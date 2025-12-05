@@ -96,10 +96,10 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
   ];
 
   return (
-    <div className="w-full h-auto min-h-[calc(100vh-220px)] md:min-h-[calc(100vh-180px)] relative bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none flex flex-col">
+    <div className="w-full h-auto min-h-[calc(100vh-220px)] md:min-h-[calc(100vh-180px)] relative bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-2xl md:overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none flex flex-col">
       
-      {/* Mobile Tab Navigation */}
-      <div className="md:hidden flex border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar">
+      {/* Mobile Tab Navigation - Sticky */}
+      <div className="md:hidden sticky top-0 z-30 flex border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar bg-white dark:bg-[#1e293b]">
         {tabs.map((tab) => (
           <button
             key={tab.type}
@@ -117,7 +117,7 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
 
       <div className="flex-1 w-full relative">
         {/* Mobile View: Show Single Active Quadrant */}
-        <div className="md:hidden h-full">
+        <div className="md:hidden">
            {activeMobileTab === QuadrantType.DO && renderQuadrant(
               QuadrantType.DO, "马上做 (Do)", "重要且紧急", <AlertCircle className="w-6 h-6" />, 
               { text: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50/30 dark:bg-slate-900/50", border: "", cardBg: "bg-white dark:bg-slate-800", iconBg: "bg-white dark:bg-slate-950 border border-blue-100 dark:border-slate-800" }
@@ -136,8 +136,8 @@ export const Matrix: React.FC<MatrixProps> = ({ tasks, onTaskClick }) => {
            )}
         </div>
 
-        {/* Desktop View: Show Grid */}
-        <div className="hidden md:grid grid-cols-2 h-full">
+        {/* Desktop View: Show Grid - Added min-h-full to ensure it fills the flex container */}
+        <div className="hidden md:grid grid-cols-2 min-h-full">
           {renderQuadrant(
             QuadrantType.DO, "马上做 (Do)", "重要且紧急", <AlertCircle className="w-7 h-7" />, 
             { text: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50/30 dark:bg-slate-900/50", border: "border-b border-r border-slate-200 dark:border-slate-800", cardBg: "bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-700", iconBg: "bg-white dark:bg-slate-950 border border-blue-100 dark:border-slate-800" }

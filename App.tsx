@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppState, TaskInput, Question, Task, UserSettings, QuadrantType, BatchTaskInput, BatchAnalysisResult, BilingualText } from './types';
 import { generateAssessmentQuestions, analyzeTaskWithGemini, testAIConnection, generateBatchAssessmentQuestions, analyzeBatchTasks } from './services/geminiService';
 import { supabaseService } from './services/supabaseService';
 import { Button, Card, InputField, TextArea } from './components/UiComponents';
 import { Matrix } from './components/Matrix';
-import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle, Layers, CheckSquare, Languages, Archive, Filter, ListFilter, Clock } from 'lucide-react';
+import { BrainCircuit, ArrowRight, RotateCcw, Terminal, Plus, X, LayoutGrid, ListTodo, Save, CalendarDays, Settings, Database, UserCog, KeyRound, Cloud, PieChart, CheckCircle, Circle, Activity, BarChart3, Sun, Moon, ChevronLeft, Trash2, Cpu, Zap, Sliders, HelpCircle, ExternalLink, Box, Sparkles, Info, Edit, XCircle, Layers, CheckSquare, Languages, Archive, Filter, ListFilter, Clock, ArrowDownWideNarrow, ArrowUpNarrowWide, Timer, Zap as ZapIcon, Target, AlertCircle } from 'lucide-react';
 
 const DEFAULT_SETTINGS: UserSettings = {
   aiProvider: 'gemini',
@@ -144,10 +143,6 @@ const Heatmap: React.FC<{ tasks: Task[], onDayClick: (date: string, tasks: Task[
                        const dayTasks = tasksByDate[key] || [];
                        const count = dayTasks.length;
                        
-                       // Quadrant Breakdown for Tooltip
-                       const doCount = dayTasks.filter(t => t.quadrant === QuadrantType.DO).length;
-                       const planCount = dayTasks.filter(t => t.quadrant === QuadrantType.PLAN).length;
-                       
                        return (
                           <div 
                             key={key}
@@ -243,6 +238,10 @@ const App: React.FC = () => {
   const [filterEndDate, setFilterEndDate] = useState('');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
+  // Archive (Completed Tasks) View State
+  const [archiveSort, setArchiveSort] = useState<'newest' | 'oldest' | 'duration-desc' | 'duration-asc'>('newest');
+  const [archiveFilter, setArchiveFilter] = useState<QuadrantType | 'all'>('all');
+
   // Batch specific local state for input
   const [batchRawInput, setBatchRawInput] = useState('');
   const [batchCommonDate, setBatchCommonDate] = useState('');
@@ -293,9 +292,11 @@ const App: React.FC = () => {
         const tasks = await supabaseService.fetchTasks(state.settings);
         setState(prev => ({ ...prev, tasks, isSyncing: false }));
         localStorage.setItem('matrix_ai_tasks', JSON.stringify(tasks));
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to fetch from Supabase:", error);
-        setState(prev => ({ ...prev, isSyncing: false, error: "无法连接数据库，已切换至本地缓存。" }));
+        // Better error message handling
+        const msg = error?.message || "无法连接数据库";
+        setState(prev => ({ ...prev, isSyncing: false, error: `${msg}，已切换至本地缓存。` }));
       }
     } else {
       const savedTasks = localStorage.getItem('matrix_ai_tasks');
@@ -444,6 +445,65 @@ const App: React.FC = () => {
     });
   }, [state.tasks, filterStatus, filterTimeRange, filterStartDate, filterEndDate]);
 
+
+  // --- Archive Logic (Moved to Top Level to fix React Hook rules) ---
+  
+  // Process data based on local sort/filter state
+  const processedCompletedTasks = useMemo(() => {
+     let list = state.tasks.filter(t => t.isCompleted);
+     
+     // Filter
+     if (archiveFilter !== 'all') {
+        list = list.filter(t => t.quadrant === archiveFilter);
+     }
+
+     // Sort
+     list.sort((a, b) => {
+        // Ensure explicit number conversion to satisfy strict type checks
+        const tA = Number(a.completedAt || 0);
+        const tB = Number(b.completedAt || 0);
+        const cA = Number(a.createdAt || 0);
+        const cB = Number(b.createdAt || 0);
+        
+        const durA = tA - cA;
+        const durB = tB - cB;
+
+        switch (archiveSort) {
+           case 'newest': return tB - tA;
+           case 'oldest': return tA - tB;
+           case 'duration-desc': return durB - durA;
+           case 'duration-asc': return durA - durB;
+           default: return 0;
+        }
+     });
+     return list;
+  }, [state.tasks, archiveSort, archiveFilter]);
+
+  // Analytics Logic for Insights Panel
+  const archiveInsights = useMemo(() => {
+     if (processedCompletedTasks.length === 0) return { avgDuration: 0, primaryQuadrant: 'None' };
+
+     // 1. Avg Duration
+     const totalDuration = processedCompletedTasks.reduce((acc, t) => {
+        if (t.completedAt && t.createdAt) {
+           return acc + (Number(t.completedAt) - Number(t.createdAt));
+        }
+        return acc;
+     }, 0);
+     const avgDays = totalDuration / processedCompletedTasks.length / (1000 * 60 * 60 * 24);
+
+     // 2. Primary Quadrant
+     const counts = processedCompletedTasks.reduce((acc, t) => {
+        acc[t.quadrant] = (acc[t.quadrant] || 0) + 1;
+        return acc;
+     }, {} as Record<string, number>);
+     
+     const primary = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'None';
+
+     return { avgDuration: avgDays.toFixed(1), primaryQuadrant: primary };
+  }, [processedCompletedTasks]);
+
+
   // --- Edit Actions ---
 
   const startEditing = (task: Task) => {
@@ -554,1415 +614,1335 @@ const App: React.FC = () => {
 
   const saveSettings = () => {
     setState(prev => ({ ...prev, settings: tempSettings, view: 'dashboard' }));
+    // If Supabase settings changed, try to refresh tasks
+    if (tempSettings.supabaseUrl && tempSettings.supabaseKey) {
+      refreshTasks();
+    }
   };
 
-  const handleTestAIConnection = async () => {
+  const resetSettings = () => {
+    setTempSettings(DEFAULT_SETTINGS);
+    setConnectionStatus('idle');
+    setAiConnectionStatus('idle');
+  };
+
+  const testSupabase = async () => {
+    setConnectionStatus('testing');
+    const success = await supabaseService.testConnection(tempSettings);
+    setConnectionStatus(success ? 'success' : 'failed');
+  };
+
+  const testAI = async () => {
     setAiConnectionStatus('testing');
     const success = await testAIConnection(tempSettings);
     setAiConnectionStatus(success ? 'success' : 'failed');
-  }
-
-  const setDateOffset = (days: number) => {
-    const date = new Date();
-    date.setDate(date.getDate() + days);
-    const dateString = date.toISOString().split('T')[0];
-    setInputTime(dateString);
   };
 
-  // --- Single Task Workflow ---
-
-  const handleStartAssessment = async () => {
-    if (!inputName || !inputTime) return;
+  // --- Single Wizard Handlers ---
+  const handleTaskInputSubmit = async () => {
+    if (!inputName.trim()) {
+      setState(prev => ({ ...prev, error: "任务名称不能为空" }));
+      return;
+    }
+    
     setIsLoading(true);
     setState(prev => ({ ...prev, error: null }));
+    
+    const taskInput = { name: inputName, estimatedTime: inputTime };
+    
     try {
-      const taskInput = { name: inputName, estimatedTime: inputTime };
-      const questionTexts = await generateAssessmentQuestions(taskInput, state.settings);
-      const questions: Question[] = questionTexts.map((text, i) => ({ id: i.toString(), text }));
-      setState(prev => ({ ...prev, wizardStep: 'assessment', currentTaskInput: taskInput, currentQuestions: questions }));
-    } catch (error) {
-      setState(prev => ({ ...prev, error: `AI初始化失败: ${(error as Error).message}` }));
+      const questions = await generateAssessmentQuestions(taskInput, state.settings);
+      setState(prev => ({ 
+        ...prev, 
+        currentTaskInput: taskInput,
+        currentQuestions: questions.map((q, i) => ({ id: String(i), text: q })),
+        wizardStep: 'assessment',
+        currentAnswers: {}
+      }));
+    } catch (error: any) {
+      setState(prev => ({ ...prev, error: error.message || "生成问题失败，请检查设置" }));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAnalyze = async () => {
+  const handleAnswerSubmit = async () => {
     if (!state.currentTaskInput) return;
-    setIsLoading(true);
-    setState(prev => ({ ...prev, wizardStep: 'analyzing', error: null }));
+    
+    setState(prev => ({ ...prev, wizardStep: 'analyzing' }));
+    
     try {
-      const questionTexts = state.currentQuestions.map(q => q.text);
-      const result = await analyzeTaskWithGemini(state.currentTaskInput, questionTexts, state.currentAnswers, state.settings);
-      setState(prev => ({ ...prev, wizardStep: 'result', currentAnalysis: result }));
-    } catch (error) {
-      setState(prev => ({ ...prev, wizardStep: 'assessment', error: `分析失败: ${(error as Error).message}` }));
-    } finally {
-      setIsLoading(false);
+      const analysis = await analyzeTaskWithGemini(
+        state.currentTaskInput, 
+        state.currentQuestions.map(q => q.text),
+        state.currentAnswers,
+        state.settings
+      );
+      
+      setState(prev => ({ 
+        ...prev, 
+        currentAnalysis: analysis,
+        wizardStep: 'result'
+      }));
+    } catch (error: any) {
+      setState(prev => ({ 
+        ...prev, 
+        error: error.message || "分析任务失败",
+        wizardStep: 'assessment' 
+      }));
     }
   };
 
   const handleSaveTask = async () => {
     if (!state.currentTaskInput || !state.currentAnalysis) return;
+    
+    setIsLoading(true);
     const newTask: Task = {
       id: crypto.randomUUID(),
       name: state.currentTaskInput.name,
       estimatedTime: state.currentTaskInput.estimatedTime,
       createdAt: Date.now(),
-      isCompleted: false,
-      ...state.currentAnalysis
+      ...state.currentAnalysis,
     };
-    setState(prev => ({ ...prev, tasks: [...prev.tasks, newTask], view: 'dashboard', wizardStep: 'input' }));
-    if (isSupabaseConfigured) {
-      try { await supabaseService.addTask(newTask, state.settings); } catch (e) { console.error(e); }
-    }
-  };
-
-  const toggleAnswer = (id: string, value: boolean) => {
-    setState(prev => ({ ...prev, currentAnswers: { ...prev.currentAnswers, [id]: value } }));
-  };
-
-  // --- Batch Task Workflow ---
-
-  const handleBatchStep1Submit = async () => {
-    if (!batchRawInput.trim() || !batchCommonDate) return;
-    setIsLoading(true);
     
-    // Parse Input
-    const taskLines = batchRawInput.split('\n').filter(l => l.trim().length > 0);
-    const batchInputs: BatchTaskInput[] = taskLines.map((line, idx) => ({
-      id: `temp-${idx}`,
-      name: line.trim(),
+    // Optimistic Save
+    setState(prev => ({
+      ...prev,
+      tasks: [...prev.tasks, newTask],
+      view: 'dashboard',
+      wizardStep: 'input',
+      currentTaskInput: null
+    }));
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.addTask(newTask, state.settings);
+      } catch (error) {
+         console.error("Failed to save to DB:", error);
+         setState(prev => ({ ...prev, error: "保存到云端失败，仅保存到本地" }));
+      }
+    }
+    setIsLoading(false);
+  };
+
+  // --- Batch Wizard Handlers ---
+
+  const handleBatchInputSubmit = async () => {
+    const lines = batchRawInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) {
+      setState(prev => ({ ...prev, error: "请输入至少一个任务" }));
+      return;
+    }
+    if (lines.length > 20) {
+      setState(prev => ({ ...prev, error: "一次最多处理 20 个任务" }));
+      return;
+    }
+
+    setIsLoading(true);
+    setState(prev => ({ ...prev, error: null }));
+
+    const batchTasks: BatchTaskInput[] = lines.map(line => ({
+      id: crypto.randomUUID(), // Temp ID
+      name: line,
       estimatedTime: batchCommonDate
     }));
 
     try {
-      const questionMap = await generateBatchAssessmentQuestions(batchInputs, state.settings);
+      const questionsMap = await generateBatchAssessmentQuestions(batchTasks, state.settings);
       setState(prev => ({
         ...prev,
-        batchInputs,
-        batchQuestions: questionMap,
-        batchWizardStep: 'assessment'
+        batchInputs: batchTasks,
+        batchQuestions: questionsMap,
+        batchWizardStep: 'assessment',
+        batchAnswers: {}
       }));
-    } catch (error) {
-       setState(prev => ({...prev, error: `批量生成失败: ${(error as Error).message}`}));
+    } catch (error: any) {
+      setState(prev => ({ ...prev, error: error.message || "生成批量问题失败" }));
     } finally {
-       setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const toggleBatchAnswer = (taskId: string, questionIdx: number, val: boolean) => {
-     setState(prev => {
-        const currentTaskAnswers = prev.batchAnswers[taskId] || {};
-        return {
-           ...prev,
-           batchAnswers: {
-              ...prev.batchAnswers,
-              [taskId]: {
-                 ...currentTaskAnswers,
-                 [questionIdx]: val
-              }
-           }
-        };
-     });
-  };
+  const handleBatchAnswerSubmit = async () => {
+    // Validation: Ensure all tasks have 3 answers
+    const allAnswered = state.batchInputs.every(t => {
+      const answers = state.batchAnswers[t.id];
+      // Check indices 0, 1, 2 are present
+      return answers && answers[0] !== undefined && answers[1] !== undefined && answers[2] !== undefined;
+    });
 
-  const handleBatchAnalyze = async () => {
-     setIsLoading(true);
-     setState(prev => ({...prev, batchWizardStep: 'analyzing', error: null}));
-     try {
-       const results = await analyzeBatchTasks(
-         state.batchInputs,
-         state.batchQuestions,
-         state.batchAnswers,
-         state.settings
-       );
-       setState(prev => ({...prev, batchWizardStep: 'review', batchResults: results}));
-     } catch (error) {
-       setState(prev => ({...prev, batchWizardStep: 'assessment', error: `批量分析失败: ${(error as Error).message}`}));
-     } finally {
-       setIsLoading(false);
-     }
-  };
+    if (!allAnswered) {
+      setState(prev => ({ ...prev, error: "请回答所有任务的问题" }));
+      return;
+    }
 
-  const updateBatchResultQuadrant = (taskId: string, newQuad: QuadrantType) => {
-     setState(prev => ({
+    setState(prev => ({ ...prev, batchWizardStep: 'analyzing', error: null }));
+
+    try {
+      const results = await analyzeBatchTasks(
+        state.batchInputs,
+        state.batchQuestions,
+        state.batchAnswers,
+        state.settings
+      );
+      
+      setState(prev => ({
         ...prev,
-        batchResults: prev.batchResults.map(r => r.taskId === taskId ? {...r, quadrant: newQuad} : r)
-     }));
+        batchResults: results,
+        batchWizardStep: 'review'
+      }));
+    } catch (error: any) {
+      setState(prev => ({ ...prev, error: error.message || "批量分析失败", batchWizardStep: 'assessment' }));
+    }
   };
 
-  const saveBatchTasks = async () => {
-     const newTasks: Task[] = [];
-     
-     // Merge inputs and results
-     state.batchResults.forEach(res => {
-        const input = state.batchInputs.find(i => i.id === res.taskId);
-        if (input) {
-           newTasks.push({
-              id: crypto.randomUUID(),
-              name: input.name,
-              estimatedTime: input.estimatedTime,
-              createdAt: Date.now(),
-              isCompleted: false,
-              quadrant: res.quadrant,
-              reasoning: res.reasoning,
-              advice: res.advice,
-              steps: [], // Placeholder for batch as we don't generate deep steps for batch to save tokens
-              isImportant: res.quadrant === QuadrantType.DO || res.quadrant === QuadrantType.PLAN,
-              isUrgent: res.quadrant === QuadrantType.DO || res.quadrant === QuadrantType.DELEGATE
-           });
-        }
-     });
+  const handleBatchReviewSave = async () => {
+    setIsLoading(true);
+    const newTasks: Task[] = state.batchResults.map(res => {
+      const originalInput = state.batchInputs.find(t => t.id === res.taskId);
+      return {
+        id: crypto.randomUUID(),
+        name: originalInput ? originalInput.name : "Unknown Task",
+        estimatedTime: originalInput ? originalInput.estimatedTime : batchCommonDate,
+        createdAt: Date.now(),
+        quadrant: res.quadrant,
+        isImportant: res.quadrant === QuadrantType.DO || res.quadrant === QuadrantType.PLAN,
+        isUrgent: res.quadrant === QuadrantType.DO || res.quadrant === QuadrantType.DELEGATE,
+        reasoning: res.reasoning,
+        steps: [], // Batch doesn't generate detailed steps to save tokens
+        advice: res.advice
+      };
+    });
 
-     setState(prev => ({...prev, tasks: [...prev.tasks, ...newTasks], view: 'dashboard'}));
+    // Optimistic Save
+    setState(prev => ({
+      ...prev,
+      tasks: [...prev.tasks, ...newTasks],
+      view: 'dashboard',
+      batchWizardStep: 'input',
+      batchInputs: []
+    }));
 
-     if (isSupabaseConfigured) {
-        // Upload one by one to avoid race conditions or use a batch insert if configured in Supabase (simplified here)
-        for (const t of newTasks) {
-           try { await supabaseService.addTask(t, state.settings); } catch (e) { console.error(e); }
-        }
-     }
+    if (isSupabaseConfigured) {
+      try {
+        await Promise.all(newTasks.map(t => supabaseService.addTask(t, state.settings)));
+      } catch (error) {
+        console.error("Batch save error:", error);
+        setState(prev => ({ ...prev, error: "部分任务同步云端失败" }));
+      }
+    }
+    setIsLoading(false);
   };
 
-  // --- Render Components ---
+  // --- Render Helpers ---
 
-  const renderTaskDetail = (task: Task, isOverlay: boolean = false) => {
-    // Shared Action Buttons Component
-    const ActionButtons = () => (
-      <div className="flex items-center gap-1">
-        {isEditingTask ? (
-          <>
-            <button 
-              onClick={saveTaskChanges} 
-              className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
-              title="保存"
-            >
-              <Save className="w-5 h-5" />
-            </button>
-            <button 
-              onClick={cancelEditing} 
-              className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-              title="取消编辑"
-            >
-              <XCircle className="w-5 h-5" />
-            </button>
-          </>
-        ) : (
-          <>
-            <button 
-              onClick={() => startEditing(task)} 
-              className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-              title="编辑任务"
-            >
-              <Edit className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => deleteTask(task.id)} 
-              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
-              title="删除任务"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => { setSelectedTask(null); setIsEditingTask(false); }} 
-              className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-              title="关闭详情"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </>
-        )}
-      </div>
+  const renderHeaderActions = (onEdit: () => void, onDelete: () => void, onClose: () => void, isEditing: boolean, onSave: () => void, onCancel: () => void) => (
+    <div className="flex items-center gap-1 md:gap-2">
+      {isEditing ? (
+        <>
+          <Button onClick={onSave} className="!px-3 !py-1.5 md:!px-4 md:!py-2 bg-emerald-600 hover:bg-emerald-700 text-xs md:text-sm">
+            <Save className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1 md:mr-2" /> 保存
+          </Button>
+          <Button variant="secondary" onClick={onCancel} className="!px-3 !py-1.5 md:!px-4 md:!py-2 text-xs md:text-sm">
+            取消
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button variant="secondary" onClick={onEdit} className="!px-3 !py-1.5 md:!px-4 md:!py-2 text-xs md:text-sm" title="编辑任务">
+            <Edit className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden md:inline ml-1">编辑</span>
+          </Button>
+          <Button variant="danger" onClick={onDelete} className="!px-3 !py-1.5 md:!px-4 md:!py-2 text-xs md:text-sm" title="删除任务">
+            <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden md:inline ml-1">删除</span>
+          </Button>
+          <button 
+            onClick={onClose} 
+            className="p-1.5 md:p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          >
+            <X className="w-5 h-5 md:w-6 md:h-6" />
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  const renderTaskDetail = (task: Task | null, isOverlay = false) => {
+    if (!task) return null;
+    
+    // Actions Wrapper
+    const actions = renderHeaderActions(
+      () => startEditing(task),
+      () => deleteTask(task.id),
+      () => {
+        if (isOverlay) {
+          setSelectedTask(null);
+          if (selectedDateTasks) setSelectedDateTasks(null);
+        } else {
+          setSelectedTask(null);
+        }
+        setIsEditingTask(false);
+      },
+      isEditingTask,
+      saveTaskChanges,
+      cancelEditing
     );
 
     return (
       <Card 
-        title={isOverlay ? (isEditingTask ? "编辑任务" : "任务详情") : undefined} 
-        actions={isOverlay ? <ActionButtons /> : undefined}
-        className={`h-full border-t-4 border-t-blue-500 flex flex-col shadow-2xl ${!isOverlay ? 'border-slate-200 dark:border-slate-700 relative' : 'min-h-0'}`}
+        className={`${isOverlay ? 'h-[85vh] w-[90vw] md:w-[600px] shadow-2xl' : 'h-[calc(100vh-120px)] border-none shadow-none bg-transparent'} flex flex-col`}
+        title={isOverlay ? "任务详情" : undefined}
+        actions={isOverlay ? actions : undefined}
       >
-        {/* Desktop Absolute Actions */}
+        {/* Desktop Actions (Absolute Position) */}
         {!isOverlay && (
-          <div className="absolute top-3 right-3 z-10">
-             <ActionButtons />
+          <div className="absolute top-0 right-0 z-20 flex gap-2 bg-white/80 dark:bg-[#1e293b]/80 backdrop-blur-sm p-2 rounded-bl-xl border-l border-b border-slate-200 dark:border-slate-700">
+             {actions}
           </div>
         )}
 
-        {/* Editing Mode Header */}
-        {isEditingTask && editForm ? (
-          <div className={`mb-6 ${!isOverlay ? 'mt-2 pr-20' : 'mt-2'}`}>
-             <label className="block text-xs font-bold text-slate-400 uppercase mb-1">任务名称</label>
-             <input 
-                value={editForm.name}
-                onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-                className="w-full text-xl font-bold bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-             />
-          </div>
-        ) : (
-          <div className={`flex justify-between items-start mb-6 ${!isOverlay ? 'mt-2 pr-20' : 'mt-2'}`}>
-            <h3 className={`text-xl font-bold leading-tight ${task.isCompleted ? 'text-slate-400 line-through decoration-slate-400' : 'text-slate-900 dark:text-white'}`}>{task.name}</h3>
-          </div>
-        )}
-        
-        <div className="space-y-6 text-sm flex-1 overflow-y-auto custom-scrollbar pr-1 pb-6 min-h-0">
-          {!isEditingTask && (
-            <button 
-              onClick={() => toggleTaskCompletion(task)}
-              className={`w-full py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 border
-              ${task.isCompleted 
-                ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700' 
-                : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 dark:shadow-none'}`}
-            >
-              {task.isCompleted ? (
-                <>
-                  <RotateCcw className="w-4 h-4" /> 标记为未完成
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4" /> 标记为已完成
-                </>
-              )}
-            </button>
-          )}
-
-          {isEditingTask && editForm ? (
-             <div className="grid grid-cols-1 gap-6">
-                {/* Edit Quadrant */}
-                <div>
-                   <label className="block text-xs font-bold text-slate-400 uppercase mb-2">优先级 / 象限</label>
-                   <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { type: QuadrantType.DO, label: "Do (马上做)", color: "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" },
-                        { type: QuadrantType.PLAN, label: "Plan (计划做)", color: "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" },
-                        { type: QuadrantType.DELEGATE, label: "Delegate (授权)", color: "border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300" },
-                        { type: QuadrantType.ELIMINATE, label: "Eliminate (减少)", color: "border-rose-500 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300" }
-                      ].map((q) => (
-                         <button
-                            key={q.type}
-                            onClick={() => setEditForm({...editForm, quadrant: q.type})}
-                            className={`p-3 rounded-lg border-2 text-xs font-bold transition-all ${editForm.quadrant === q.type ? q.color : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-400'}`}
-                         >
-                            {q.label}
-                         </button>
-                      ))}
+        <div className={`space-y-6 md:space-y-8 h-full overflow-y-auto custom-scrollbar pb-6 ${!isOverlay ? 'pt-2' : ''}`}>
+          
+          {/* Header Section */}
+          <div>
+            {isEditingTask ? (
+              <div className="space-y-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-blue-100 dark:border-slate-700">
+                <InputField 
+                  label="任务名称" 
+                  value={editForm?.name || ''} 
+                  onChange={e => setEditForm(prev => prev ? {...prev, name: e.target.value} : null)} 
+                />
+                <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                   <div className="flex items-center gap-3">
+                      <CalendarDays className="w-5 h-5 text-slate-400" />
+                      <span className="text-sm font-medium">截止日期</span>
                    </div>
-                </div>
-
-                {/* Edit Date */}
-                <div>
-                   <label className="block text-xs font-bold text-slate-400 uppercase mb-2">截止日期</label>
                    <input 
-                      type="date"
-                      value={editForm.estimatedTime}
-                      onChange={(e) => setEditForm({...editForm, estimatedTime: e.target.value})}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      type="date" 
+                      className="bg-transparent text-slate-700 dark:text-slate-200 font-mono text-sm focus:outline-none text-right"
+                      value={editForm?.estimatedTime || ''}
+                      onChange={e => setEditForm(prev => prev ? {...prev, estimatedTime: e.target.value} : null)}
                    />
                 </div>
-
-                {isOverlay && (
-                   <div className="flex gap-3 mt-4">
-                      <Button onClick={saveTaskChanges} className="flex-1">保存</Button>
-                      <Button variant="secondary" onClick={cancelEditing} className="flex-1">取消</Button>
-                   </div>
-                )}
-             </div>
-          ) : (
-            /* View Mode Details */
-            <>
-              <div className="grid grid-cols-1 gap-4">
-                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
-                  <span className="text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">优先级分类</span>
-                  <span className={`font-bold text-base px-3 py-1 rounded-full bg-opacity-10 border
-                    ${task.quadrant === 'Do' ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-400/10 border-blue-200 dark:border-blue-400/30' : 
-                      task.quadrant === 'Plan' ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-400/10 border-emerald-200 dark:border-emerald-400/30' : 
-                      task.quadrant === 'Delegate' ? 'text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 border-amber-200 dark:border-amber-400/30' : 'text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-400/10 border-rose-200 dark:border-rose-400/30'}`}>
-                    {task.quadrant}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
-                  <span className="text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">截止日期</span>
-                  <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-base">{task.estimatedTime}</span>
-                </div>
               </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/30 p-5 rounded-lg border border-slate-200 dark:border-slate-800">
-                <div className="text-xs text-slate-500 mb-2 uppercase tracking-wider font-bold">分类逻辑</div>
-                <div className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm">
-                  {getLocalizedContent(task.reasoning)}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs text-blue-600 dark:text-blue-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-                  <ListTodo className="w-4 h-4" /> 执行步骤
-                </div>
-                <ul className="space-y-3">
-                  {task.steps.map((step, i) => (
-                    <li key={i} className="flex gap-3 text-slate-700 dark:text-slate-300 text-sm">
-                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-mono shrink-0 font-bold">{i+1}</span>
-                      <span className={`leading-snug ${task.isCompleted ? 'line-through opacity-60' : ''}`}>
-                        {getLocalizedContent(step)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div>
-                <div className="text-xs text-indigo-600 dark:text-indigo-400 mb-3 uppercase tracking-wider font-bold flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-                  <BrainCircuit className="w-4 h-4" /> 智能建议与策略
-                </div>
-                <div className="text-slate-900 dark:text-indigo-100 text-sm leading-relaxed bg-indigo-50/80 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700/50 shadow-sm">
-                  <div className="flex items-start gap-2">
-                    <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
-                    <span className="whitespace-pre-wrap font-medium dark:font-normal">
-                      {getLocalizedContent(task.advice)}
+            ) : (
+              <>
+                <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white leading-tight mb-3">
+                  {task.name}
+                </h2>
+                <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400 text-sm">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" />
+                    <span className="font-mono">{task.estimatedTime}</span>
+                  </div>
+                  {task.isCompleted && (
+                    <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded text-xs font-bold">
+                      COMPLETED
                     </span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Action Button */}
+          {!isEditingTask && (
+            <Button 
+              onClick={() => toggleTaskCompletion(task)}
+              className={`w-full py-3 md:py-4 text-base md:text-lg font-bold rounded-xl transition-all duration-300 transform active:scale-[0.99]
+                ${task.isCompleted 
+                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700' 
+                  : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/30'
+                }`}
+            >
+              {task.isCompleted ? (
+                <span className="flex items-center justify-center gap-2"><RotateCcw className="w-5 h-5"/> 恢复为未完成</span>
+              ) : (
+                <span className="flex items-center justify-center gap-2"><CheckCircle className="w-5 h-5"/> 标记为已完成</span>
+              )}
+            </Button>
+          )}
+
+          {/* Quadrant Classification */}
+          <div className="p-4 md:p-6 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+             {isEditingTask ? (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-400 mb-3">优先权矩阵分类</label>
+                  <div className="grid grid-cols-2 gap-3">
+                     {[QuadrantType.DO, QuadrantType.PLAN, QuadrantType.DELEGATE, QuadrantType.ELIMINATE].map(q => (
+                       <button
+                         key={q}
+                         onClick={() => setEditForm(prev => prev ? {...prev, quadrant: q} : null)}
+                         className={`py-3 px-2 rounded-lg text-sm font-bold border-2 transition-all
+                           ${editForm?.quadrant === q 
+                             ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' 
+                             : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-500'}
+                         `}
+                       >
+                         {q}
+                       </button>
+                     ))}
                   </div>
                 </div>
-              </div>
-            </>
+             ) : (
+               <div className="flex items-center justify-between">
+                 <span className="text-slate-500 dark:text-slate-400 font-medium text-sm md:text-base">优先级分类</span>
+                 <span className={`px-4 py-1.5 rounded-full font-bold text-sm md:text-base tracking-wide
+                    ${task.quadrant === QuadrantType.DO ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : ''}
+                    ${task.quadrant === QuadrantType.PLAN ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : ''}
+                    ${task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : ''}
+                    ${task.quadrant === QuadrantType.ELIMINATE ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : ''}
+                 `}>
+                   {task.quadrant}
+                 </span>
+               </div>
+             )}
+
+             {/* Reasoning Text */}
+             {!isEditingTask && (
+               <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">分类逻辑</p>
+                 <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-sm md:text-base italic">
+                   "{getLocalizedContent(task.reasoning)}"
+                 </p>
+               </div>
+             )}
+          </div>
+
+          {/* Steps */}
+          {(!isEditingTask && Array.isArray(task.steps) && task.steps.length > 0) && (
+            <div>
+               <h3 className="flex items-center gap-2 text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">
+                 <ListTodo className="w-5 h-5 text-blue-500" /> 执行步骤
+               </h3>
+               <div className="space-y-3">
+                 {task.steps.map((step, idx) => (
+                   <div key={idx} className="flex gap-4 p-4 bg-white dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs mt-0.5">
+                        {idx + 1}
+                      </div>
+                      <p className="text-slate-700 dark:text-slate-300 text-sm md:text-base leading-relaxed">
+                        {getLocalizedContent(step)}
+                      </p>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          )}
+
+          {/* AI Advice */}
+          {!isEditingTask && (
+            <div>
+               <h3 className="flex items-center gap-2 text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">
+                 <BrainCircuit className="w-5 h-5 text-purple-500" /> 智能建议与策略
+               </h3>
+               <div className="p-5 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10 rounded-2xl border border-purple-100 dark:border-purple-900/30 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-3 opacity-10">
+                     <Sparkles className="w-16 h-16 text-purple-500" />
+                  </div>
+                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed relative z-10 text-sm md:text-base">
+                    {getLocalizedContent(task.advice)}
+                  </p>
+               </div>
+            </div>
           )}
         </div>
       </Card>
     );
   };
 
-  const renderBatchWizard = () => {
-     if (state.batchWizardStep === 'input') {
-        return (
-           <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 p-4 md:p-0">
-             <div className="text-center mb-8">
-               <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-500/10">
-                 <Layers className="w-8 h-8" />
-               </div>
-               <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">批量任务录入</h2>
-               <p className="text-slate-500 dark:text-slate-400">一次性输入多个任务，AI 将协助您快速进行批量分类。</p>
-             </div>
-             
-             <Card className="shadow-xl">
-               <TextArea 
-                 label="任务列表 (一行一个)" 
-                 placeholder="例如：&#10;修复首页 Bug&#10;准备周会 PPT&#10;给客户打电话"
-                 value={batchRawInput}
-                 onChange={(e) => setBatchRawInput(e.target.value)}
-                 className="min-h-[200px] font-mono text-sm leading-relaxed"
-               />
-               <InputField 
-                 label="统一截止日期" 
-                 type="date" 
-                 value={batchCommonDate}
-                 onChange={(e) => setBatchCommonDate(e.target.value)}
-               />
-               <div className="flex gap-4 mt-6">
-                 <Button variant="secondary" onClick={() => navigateTo('dashboard')} className="flex-1">取消</Button>
-                 <Button onClick={handleBatchStep1Submit} disabled={!batchRawInput.trim()} isLoading={isLoading} className="flex-[2] bg-emerald-600 hover:bg-emerald-700">
-                   下一步：生成评估问题
-                 </Button>
-               </div>
-             </Card>
-           </div>
-        );
-     }
-
-     if (state.batchWizardStep === 'assessment') {
-        return (
-           <div className="max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-right-8 p-4 md:p-0">
-              <div className="flex items-center justify-between mb-6">
-                 <div>
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">批量评估</h2>
-                    <p className="text-slate-500 text-sm">请回答以下情境问题以辅助 AI 判断</p>
-                 </div>
-                 <div className="text-sm font-bold bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
-                    {Object.keys(state.batchAnswers).length}/{state.batchInputs.length} 已填写
-                 </div>
-              </div>
-
-              <div className="space-y-4 mb-8">
-                 {state.batchInputs.map((task) => {
-                    const questions = state.batchQuestions[task.id] || [];
-                    const answers = state.batchAnswers[task.id] || {};
-                    // Updated logic: Check for 3 answers (indexes 0, 1, 2)
-                    const isFullyAnswered = answers[0] !== undefined && answers[1] !== undefined && answers[2] !== undefined;
-
-                    return (
-                       <div key={task.id} className={`p-4 rounded-xl border transition-all ${isFullyAnswered ? 'bg-slate-50 dark:bg-slate-900/30 border-emerald-500/30' : 'bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-700 shadow-sm'}`}>
-                          <div className="font-bold text-lg mb-3 text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                             {isFullyAnswered && <CheckCircle className="w-4 h-4 text-emerald-500" />}
-                             {task.name}
-                          </div>
-                          {/* Changed to vertical stack for longer guided questions */}
-                          <div className="grid grid-cols-1 gap-3">
-                             {questions.map((q, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/50 p-2.5 rounded-lg">
-                                   <span className="text-xs md:text-sm text-slate-600 dark:text-slate-400 mr-2 flex-1 leading-tight">{q}</span>
-                                   <div className="flex gap-1 shrink-0">
-                                      <button 
-                                        onClick={() => toggleBatchAnswer(task.id, idx, true)}
-                                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${answers[idx] === true ? 'bg-blue-600 text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-400 border border-slate-200 dark:border-slate-600'}`}
-                                      >
-                                        Yes
-                                      </button>
-                                      <button 
-                                        onClick={() => toggleBatchAnswer(task.id, idx, false)}
-                                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${answers[idx] === false ? 'bg-slate-600 text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-400 border border-slate-200 dark:border-slate-600'}`}
-                                      >
-                                        No
-                                      </button>
-                                   </div>
-                                </div>
-                             ))}
-                          </div>
-                       </div>
-                    );
-                 })}
-              </div>
-              
-              {state.error && <div className="text-rose-500 mb-4 p-4 bg-rose-50 rounded-lg">{state.error}</div>}
-
-              <div className="flex gap-4 pb-10">
-                 <Button variant="secondary" onClick={() => setState(prev => ({...prev, batchWizardStep: 'input'}))}>上一步</Button>
-                 <Button onClick={handleBatchAnalyze} isLoading={isLoading} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                    <Sparkles className="w-4 h-4 mr-2" /> 生成分析矩阵
-                 </Button>
-              </div>
-           </div>
-        );
-     }
-
-     if (state.batchWizardStep === 'analyzing') {
-        return (
-          <div className="max-w-md mx-auto w-full text-center pt-20 animate-in fade-in">
-             <div className="relative w-32 h-32 mx-auto mb-8">
-                <div className="absolute inset-0 border-4 border-slate-100 dark:border-slate-800 rounded-full"></div>
-                <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Layers className="w-12 h-12 text-emerald-500 animate-pulse" />
-                </div>
-             </div>
-             <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4 animate-pulse">AI 正在批量处理</h3>
-             <div className="h-8 overflow-hidden relative">
-               {BATCH_THINKING_MESSAGES.map((msg, idx) => (
-                  <p key={idx} className={`absolute w-full text-slate-500 transition-all duration-500 transform ${idx === thinkingStep ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                    {msg}
-                  </p>
-               ))}
-             </div>
-          </div>
-        );
-     }
-
-     if (state.batchWizardStep === 'review') {
-        return (
-           <div className="max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 p-4 md:p-0">
-              <div className="flex items-center justify-between mb-6">
-                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">结果确认</h2>
-                 <Button onClick={saveBatchTasks} className="bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/20">
-                    <Save className="w-4 h-4 mr-2" /> 全部保存
-                 </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-10">
-                 {state.batchResults.map((res) => {
-                    const input = state.batchInputs.find(i => i.id === res.taskId);
-                    return (
-                       <div key={res.taskId} className="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm flex flex-col">
-                          <div className="flex justify-between items-start mb-2">
-                             <h4 className="font-bold text-lg text-slate-900 dark:text-white line-clamp-1" title={input?.name}>{input?.name}</h4>
-                             <select 
-                                value={res.quadrant}
-                                onChange={(e) => updateBatchResultQuadrant(res.taskId, e.target.value as QuadrantType)}
-                                className={`text-xs font-bold px-2 py-1 rounded border outline-none cursor-pointer ${
-                                   res.quadrant === QuadrantType.DO ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                   res.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                   res.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                   'bg-rose-50 text-rose-700 border-rose-200'
-                                }`}
-                             >
-                                <option value={QuadrantType.DO}>Do</option>
-                                <option value={QuadrantType.PLAN}>Plan</option>
-                                <option value={QuadrantType.DELEGATE}>Delegate</option>
-                                <option value={QuadrantType.ELIMINATE}>Eliminate</option>
-                             </select>
-                          </div>
-                          <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded text-xs text-slate-600 dark:text-slate-400 mb-2">
-                             <span className="font-bold">理由:</span> {getLocalizedContent(res.reasoning)}
-                          </div>
-                          <div className="mt-auto flex items-start gap-2 text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded border border-indigo-100 dark:border-indigo-800">
-                             <Sparkles className="w-3 h-3 mt-0.5 shrink-0" />
-                             {getLocalizedContent(res.advice)}
-                          </div>
-                       </div>
-                    );
-                 })}
-              </div>
-           </div>
-        );
-     }
-  };
-
-  // --- Views ---
-
   const renderDashboard = () => (
-    <div className="w-full animate-in fade-in duration-500 flex flex-col min-h-full pb-10">
-      {/* Dashboard Header */}
-      <div className="flex flex-row justify-between items-center mb-4 px-1 gap-4 shrink-0">
-        <div className="flex flex-col">
-          <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">任务矩阵看板</h2>
-          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
-            <span className="hidden md:inline">Task Priority Matrix</span>
-            {isSupabaseConfigured ? (
-                <span className="flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50 text-xs">
-                  <Cloud className="w-3 h-3 mr-1" /> Sync On
-                </span>
-            ) : (
-                <span className="flex items-center text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded text-xs">
-                  <Database className="w-3 h-3 mr-1" /> Local
-                </span>
-            )}
-            {state.isSyncing && <span className="text-blue-500 animate-pulse text-xs">同步中...</span>}
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 transition-all duration-300 ease-in-out">
+      {/* Left Column: Task Matrix (Infinite Canvas) */}
+      <div className={`${selectedTask ? 'lg:col-span-8' : 'lg:col-span-12'} flex flex-col min-h-0 transition-all duration-500 ease-in-out`}>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">
+                任务矩阵看板
+              </span>
+            </h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1 flex items-center gap-2">
+              Task Priority Matrix 
+              {state.isSyncing ? (
+                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 animate-pulse flex items-center gap-1">
+                   <Cloud className="w-3 h-3" /> Syncing...
+                 </span>
+              ) : isSupabaseConfigured ? (
+                 <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
+                   <Cloud className="w-3 h-3" /> Sync On
+                 </span>
+              ) : (
+                 <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 flex items-center gap-1">
+                   <Database className="w-3 h-3" /> Local
+                 </span>
+              )}
+            </p>
+          </div>
+          
+          {/* Desktop Top Actions */}
+          <div className="hidden md:flex gap-3">
+             <Button variant="secondary" onClick={() => navigateTo('completed-tasks')} title="归档">
+                <Archive className="w-5 h-5 mr-2" /> 历史归档
+             </Button>
+             <Button variant="secondary" onClick={() => navigateTo('stats')}>
+                <BarChart3 className="w-5 h-5 mr-2" /> 数据分析
+             </Button>
+             <Button onClick={startNewTask} className="shadow-blue-500/20">
+                <Plus className="w-5 h-5 mr-1" /> 新建任务
+             </Button>
+             <Button variant="secondary" onClick={startBatchTask} title="批量创建">
+                <Layers className="w-5 h-5 text-indigo-500" />
+             </Button>
+          </div>
+
+          {/* Mobile Header Icons */}
+          <div className="md:hidden flex items-center gap-2">
+            <button onClick={() => navigateTo('stats')} className="p-2 text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg">
+               <BarChart3 className="w-5 h-5" />
+            </button>
+            <button onClick={() => navigateTo('completed-tasks')} className="p-2 text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg">
+               <Archive className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => setShowMobileFilters(!showMobileFilters)} 
+              className={`p-2 rounded-lg relative ${showMobileFilters ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}
+            >
+               <Filter className="w-5 h-5" />
+               {(filterStatus !== 'active' || filterTimeRange !== 'all') && (
+                 <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full"></span>
+               )}
+            </button>
           </div>
         </div>
         
-        {/* Mobile Header Actions (Icons) */}
-        <div className="flex md:hidden items-center gap-1">
-           <button onClick={() => navigateTo('stats')} className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
-              <BarChart3 className="w-5 h-5" />
-           </button>
-           <button onClick={() => navigateTo('completed-tasks')} className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
-              <Archive className="w-5 h-5" />
-           </button>
-           <button 
-            onClick={() => setShowMobileFilters(!showMobileFilters)} 
-            className={`p-2 rounded-full transition-colors ${showMobileFilters ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-           >
-              <Filter className="w-5 h-5" />
-           </button>
-        </div>
-
-        {/* Desktop Header Actions (Buttons) */}
-        <div className="hidden md:flex gap-3 w-auto">
-          <Button variant="secondary" onClick={() => navigateTo('completed-tasks')} className="!py-2.5 !px-4">
-            <Archive className="w-5 h-5 mr-2 inline" /> 已完成
-          </Button>
-          <Button variant="secondary" onClick={() => navigateTo('stats')} className="!py-2.5 !px-4">
-            <BarChart3 className="w-5 h-5 mr-2 inline" /> 数据分析
-          </Button>
-          <Button onClick={startNewTask} className="!py-2.5 !px-5">
-            <Plus className="w-5 h-5 mr-2 inline" /> 新建任务
-          </Button>
-          <Button onClick={startBatchTask} className="!py-2.5 !px-5 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30">
-            <Layers className="w-5 h-5 mr-2 inline" /> 批量新建
-          </Button>
-        </div>
-      </div>
-
-      {/* Filter Toolbar */}
-      <div className={`mb-6 flex flex-col md:flex-row md:items-center gap-4 bg-white dark:bg-[#1e293b] p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300 overflow-hidden ${showMobileFilters ? 'max-h-[500px] opacity-100' : 'max-h-0 md:max-h-none opacity-0 md:opacity-100 p-0 md:p-3 border-0 md:border'}`}>
-         <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm font-bold px-2">
-            <Filter className="w-4 h-4" /> 过滤:
-         </div>
-         
-         {/* Status Filter */}
-         <div className="flex flex-col md:flex-row md:items-center gap-2">
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider hidden md:inline">状态</span>
-            <select 
-               value={filterStatus}
+        {/* Filter Toolbar (Collapsible on Mobile) */}
+        <div className={`mb-6 flex flex-col md:flex-row gap-4 md:items-center bg-white dark:bg-slate-800/50 p-3 md:p-4 rounded-xl border border-slate-200 dark:border-slate-800 transition-all duration-300 ${showMobileFilters ? 'block' : 'hidden md:flex'}`}>
+           <div className="flex items-center gap-2 text-sm text-slate-500 font-bold uppercase tracking-wider w-full md:w-auto">
+             <ListFilter className="w-4 h-4" /> 过滤
+           </div>
+           
+           <div className="grid grid-cols-1 md:flex gap-3 w-full">
+             <select 
+               value={filterStatus} 
                onChange={(e) => setFilterStatus(e.target.value as any)}
-               className="w-full md:w-auto bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            >
-               <option value="all">全部 (All)</option>
-               <option value="active">未完成 (Active)</option>
-               <option value="completed">已完成 (Completed)</option>
-            </select>
-         </div>
+               className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+             >
+               <option value="active">进行中 (未完成)</option>
+               <option value="all">全部状态</option>
+               <option value="completed">已完成</option>
+             </select>
 
-         <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 hidden md:block"></div>
-
-         {/* Time Filter */}
-         <div className="flex flex-col md:flex-row md:items-center gap-2">
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider hidden md:inline">时间范围</span>
-            <select 
-               value={filterTimeRange}
+             <select 
+               value={filterTimeRange} 
                onChange={(e) => setFilterTimeRange(e.target.value as any)}
-               className="w-full md:w-auto bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            >
-               <option value="all">全部 (All)</option>
-               <option value="today">今天 (Today)</option>
-               <option value="week">本周 (This Week)</option>
-               <option value="month">本月 (This Month)</option>
-               <option value="custom">自定义范围 (Custom Range)</option>
-            </select>
-         </div>
+               className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+             >
+               <option value="all">所有时间</option>
+               <option value="today">今天</option>
+               <option value="week">本周</option>
+               <option value="month">本月</option>
+               <option value="custom">自定义范围...</option>
+             </select>
 
-         {/* Custom Range Inputs */}
-         {filterTimeRange === 'custom' && (
-            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 w-full md:w-auto">
-               <input 
-                  type="date"
-                  value={filterStartDate}
-                  onChange={(e) => setFilterStartDate(e.target.value)}
-                  className="flex-1 md:flex-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-               />
-               <span className="text-slate-400">-</span>
-               <input 
-                  type="date"
-                  value={filterEndDate}
-                  onChange={(e) => setFilterEndDate(e.target.value)}
-                  className="flex-1 md:flex-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-               />
-            </div>
-         )}
-         
-         {(filterStatus !== 'all' || filterTimeRange !== 'all') && (
-            <button 
-               onClick={() => { setFilterStatus('all'); setFilterTimeRange('all'); setFilterStartDate(''); setFilterEndDate(''); }}
-               className="ml-auto text-xs text-rose-500 hover:text-rose-600 font-medium px-2 py-1 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded transition-colors"
-            >
-               清除过滤
-            </button>
-         )}
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8 relative items-start flex-1">
-        {/* Matrix Section */}
-        <div className={`${selectedTask ? 'lg:col-span-3' : 'lg:col-span-4'} h-full transition-all duration-500 ease-in-out`}>
-          <Matrix tasks={filteredTasks} onTaskClick={selectTask} />
+             {filterTimeRange === 'custom' && (
+                <div className="flex items-center gap-2">
+                   <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-2 text-sm" />
+                   <span className="text-slate-400">-</span>
+                   <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-2 text-sm" />
+                </div>
+             )}
+           </div>
         </div>
 
-        {/* Desktop Sidebar Task Detail - Sticky Position */}
-        {selectedTask && (
-          <div className="hidden lg:block lg:col-span-1 sticky top-24 self-start h-[calc(100vh-120px)] rounded-xl animate-in slide-in-from-right-8 fade-in duration-300 shadow-2xl shadow-slate-200/50 dark:shadow-none">
-            {renderTaskDetail(selectedTask)}
-          </div>
-        )}
+        <Matrix tasks={filteredTasks} onTaskClick={selectTask} />
       </div>
 
-      {/* Mobile/Tablet Task Detail Overlay */}
+      {/* Right Column: Task Details (Sticky on Desktop) - Only show when selectedTask is active */}
       {selectedTask && (
-        <div className="lg:hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 sm:p-6 animate-in fade-in duration-200">
-          <div 
-            className="w-full h-[85vh] sm:h-[600px] sm:max-w-lg bg-white dark:bg-[#1e293b] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 duration-300 relative flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex-1 overflow-hidden p-6">
-              {renderTaskDetail(selectedTask, true)}
-            </div>
+        <div className="hidden lg:block lg:col-span-4 min-h-0 relative animate-in slide-in-from-right-8 fade-in duration-500">
+          <div className="sticky top-6">
+             {renderTaskDetail(selectedTask)}
           </div>
-          <div className="absolute inset-0 -z-10" onClick={() => { setSelectedTask(null); setIsEditingTask(false); }}></div>
         </div>
       )}
 
       {/* Mobile Floating Action Buttons (FAB) */}
-      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3 md:hidden">
-         <button 
-            onClick={startBatchTask}
-            className="w-12 h-12 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 flex items-center justify-center transition-transform active:scale-95"
-            title="批量新建"
-         >
-            <Layers className="w-6 h-6" />
-         </button>
-         <button 
-            onClick={startNewTask}
-            className="w-14 h-14 rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/30 flex items-center justify-center transition-transform active:scale-95"
-            title="新建任务"
-         >
-            <Plus className="w-8 h-8" />
-         </button>
+      <div className="md:hidden fixed bottom-6 right-6 flex flex-col gap-4 z-30 items-center">
+        <button 
+          onClick={startBatchTask}
+          className="w-12 h-12 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 flex items-center justify-center active:scale-90 transition-transform"
+        >
+          <Layers className="w-6 h-6" />
+        </button>
+        <button 
+          onClick={startNewTask}
+          className="w-12 h-12 rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/40 flex items-center justify-center active:scale-90 transition-transform"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
       </div>
-
     </div>
   );
 
   const renderCompletedTasks = () => {
-    const completedTasks = state.tasks.filter(t => t.isCompleted).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-  
     return (
-      <div className="w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 sticky top-16 md:top-20 z-30 bg-slate-50/95 dark:bg-[#0f172a]/95 py-4 border-b border-slate-200 dark:border-slate-800">
-          <div className="mb-4 md:mb-0">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">已完成任务档案</h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm">Completed Tasks Archive</p>
+      <div className="max-w-6xl mx-auto min-h-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">已完成任务档案</h1>
+            <p className="text-slate-500 dark:text-slate-400 font-mono text-sm">Completed Tasks Archive</p>
           </div>
-          <div className="flex gap-3 w-full md:w-auto">
-            <Button variant="secondary" onClick={() => navigateTo('dashboard')} className="w-full md:w-auto">
-              <ChevronLeft className="w-4 h-4 mr-2" /> 返回看板
-            </Button>
-          </div>
+          <Button variant="secondary" onClick={() => navigateTo('dashboard')} className="self-start md:self-auto">
+             <ChevronLeft className="w-4 h-4 mr-1" /> 返回看板
+          </Button>
         </div>
-  
-        <Card className="overflow-hidden bg-transparent border-0 shadow-none">
-          {completedTasks.length === 0 ? (
-             <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#1e293b] rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
-                <Archive className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-4" />
-                <p className="text-slate-500 italic">暂无已完成任务</p>
-             </div>
-          ) : (
-            <>
-              {/* Mobile View: Cards */}
-              <div className="md:hidden space-y-4">
-                 {completedTasks.map((task) => {
-                    const created = new Date(task.createdAt);
-                    const completed = task.completedAt ? new Date(task.completedAt) : new Date(); 
-                    const durationMs = completed.getTime() - created.getTime();
-                    const durationDays = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
-                    const completedDateStr = task.completedAt ? new Date(task.completedAt).toLocaleDateString() : '-';
 
+        {/* Insights Panel */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-xl">
+                 <CheckSquare className="w-6 h-6" />
+              </div>
+              <div>
+                 <p className="text-xs text-slate-500 font-bold uppercase">归档总数</p>
+                 <p className="text-2xl font-black text-slate-800 dark:text-white">{processedCompletedTasks.length}</p>
+              </div>
+           </div>
+           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4">
+              <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-xl">
+                 <Timer className="w-6 h-6" />
+              </div>
+              <div>
+                 <p className="text-xs text-slate-500 font-bold uppercase">平均周转 (天)</p>
+                 <p className="text-2xl font-black text-slate-800 dark:text-white">{archiveInsights.avgDuration}</p>
+              </div>
+           </div>
+           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4">
+              <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-xl">
+                 <Target className="w-6 h-6" />
+              </div>
+              <div>
+                 <p className="text-xs text-slate-500 font-bold uppercase">核心产出领域</p>
+                 <p className="text-xl font-black text-slate-800 dark:text-white">{archiveInsights.primaryQuadrant}</p>
+              </div>
+           </div>
+        </div>
+
+        {/* Control Toolbar */}
+        <div className="flex flex-col md:flex-row gap-4 mb-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+           <div className="flex items-center gap-2 w-full md:w-auto">
+              <ArrowDownWideNarrow className="w-4 h-4 text-slate-500" />
+              <select 
+                 value={archiveSort} 
+                 onChange={(e) => setArchiveSort(e.target.value as any)}
+                 className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48"
+              >
+                 <option value="newest">最近完成 (Newest)</option>
+                 <option value="oldest">最早完成 (Oldest)</option>
+                 <option value="duration-desc">耗时最长 (Slowest)</option>
+                 <option value="duration-asc">耗时最短 (Fastest)</option>
+              </select>
+           </div>
+           <div className="flex items-center gap-2 w-full md:w-auto">
+              <Filter className="w-4 h-4 text-slate-500" />
+              <select 
+                 value={archiveFilter} 
+                 onChange={(e) => setArchiveFilter(e.target.value as any)}
+                 className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48"
+              >
+                 <option value="all">所有象限 (All Quadrants)</option>
+                 <option value={QuadrantType.DO}>Do (马上做)</option>
+                 <option value={QuadrantType.PLAN}>Plan (计划做)</option>
+                 <option value={QuadrantType.DELEGATE}>Delegate (授权做)</option>
+                 <option value={QuadrantType.ELIMINATE}>Eliminate (减少做)</option>
+              </select>
+           </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#1e293b] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden">
+           {/* Desktop Table View */}
+           <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4">任务名称</th>
+                  <th className="px-6 py-4">所属象限</th>
+                  <th className="px-6 py-4">截止日期</th>
+                  <th className="px-6 py-4">完成日期</th>
+                  <th className="px-6 py-4">耗时 (天)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {processedCompletedTasks.length === 0 ? (
+                  <tr>
+                     <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">暂无符合条件的已完成任务</td>
+                  </tr>
+                ) : (
+                  processedCompletedTasks.map(task => {
+                    const daysTaken = task.completedAt && task.createdAt 
+                      ? Math.max(0, Math.ceil((Number(task.completedAt) - Number(task.createdAt)) / (1000 * 60 * 60 * 24))) 
+                      : 0;
+                    
                     return (
-                       <div key={task.id} className="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col gap-3">
-                          <div className="flex justify-between items-start">
-                             <h4 className="font-bold text-slate-900 dark:text-white text-base leading-tight line-clamp-2">{task.name}</h4>
-                             <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${
-                                task.quadrant === QuadrantType.DO ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                task.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                'bg-rose-50 text-rose-700 border-rose-200'
-                             }`}>
-                                {task.quadrant}
-                             </span>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400">
-                             <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded flex flex-col">
-                                <span className="uppercase text-[10px] font-bold opacity-70 mb-1">完成日期</span>
-                                <span className="font-mono text-slate-700 dark:text-slate-300">{completedDateStr}</span>
-                             </div>
-                             <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded flex flex-col">
-                                <span className="uppercase text-[10px] font-bold opacity-70 mb-1">耗时</span>
-                                <span className="font-mono text-slate-700 dark:text-slate-300">{durationDays} 天</span>
-                             </div>
-                          </div>
-                       </div>
+                      <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">{task.name}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded text-xs font-bold
+                            ${task.quadrant === QuadrantType.DO ? 'bg-blue-100 text-blue-700' : ''}
+                            ${task.quadrant === QuadrantType.PLAN ? 'bg-emerald-100 text-emerald-700' : ''}
+                            ${task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-100 text-amber-700' : ''}
+                            ${task.quadrant === QuadrantType.ELIMINATE ? 'bg-rose-100 text-rose-700' : ''}
+                          `}>
+                            {task.quadrant}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 font-mono text-sm">{task.estimatedTime}</td>
+                        <td className="px-6 py-4 text-slate-500 font-mono text-sm">
+                           {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 font-mono text-sm">{daysTaken} 天</td>
+                      </tr>
                     );
-                 })}
-              </div>
-
-              {/* Desktop View: Table */}
-              <div className="hidden md:block bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
-                    <tr>
-                      <th className="px-6 py-4 font-bold whitespace-nowrap">任务名称</th>
-                      <th className="px-6 py-4 font-bold whitespace-nowrap">所属象限</th>
-                      <th className="px-6 py-4 font-bold whitespace-nowrap">截止日期</th>
-                      <th className="px-6 py-4 font-bold whitespace-nowrap">完成日期</th>
-                      <th className="px-6 py-4 font-bold whitespace-nowrap">耗时 (天)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {completedTasks.map((task) => {
-                        const created = new Date(task.createdAt);
-                        const completed = task.completedAt ? new Date(task.completedAt) : new Date(); 
-                        const durationMs = completed.getTime() - created.getTime();
-                        const durationDays = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
-                        const completedDateStr = task.completedAt ? new Date(task.completedAt).toLocaleDateString() : '-';
-      
-                        return (
-                          <tr key={task.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                            <td className="px-6 py-4 font-medium text-slate-900 dark:text-white max-w-xs truncate" title={task.name}>
-                              {task.name}
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`px-2 py-1 rounded text-xs font-bold border ${
-                                task.quadrant === QuadrantType.DO ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                task.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                'bg-rose-50 text-rose-700 border-rose-200'
-                              }`}>
-                                {task.quadrant}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
-                              {task.estimatedTime}
-                            </td>
-                            <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
-                              {completedDateStr}
-                            </td>
-                            <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">
-                              {durationDays} 天
-                            </td>
-                          </tr>
-                        );
-                      })
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </Card>
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          
+          {/* Mobile Card View */}
+          <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+             {processedCompletedTasks.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 italic">暂无符合条件的已完成任务</div>
+             ) : (
+                processedCompletedTasks.map(task => {
+                   const daysTaken = task.completedAt && task.createdAt 
+                     ? Math.max(0, Math.ceil((Number(task.completedAt) - Number(task.createdAt)) / (1000 * 60 * 60 * 24))) 
+                     : 0;
+                   return (
+                      <div key={task.id} className="p-4 flex flex-col gap-3">
+                         <div className="flex justify-between items-start">
+                            <h3 className="font-bold text-slate-800 dark:text-slate-200 line-clamp-2">{task.name}</h3>
+                            <span className={`flex-shrink-0 px-2 py-1 rounded text-xs font-bold ml-2
+                               ${task.quadrant === QuadrantType.DO ? 'bg-blue-100 text-blue-700' : ''}
+                               ${task.quadrant === QuadrantType.PLAN ? 'bg-emerald-100 text-emerald-700' : ''}
+                               ${task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-100 text-amber-700' : ''}
+                               ${task.quadrant === QuadrantType.ELIMINATE ? 'bg-rose-100 text-rose-700' : ''}
+                            `}>
+                               {task.quadrant}
+                            </span>
+                         </div>
+                         <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono">
+                            <div className="flex flex-col">
+                               <span className="opacity-60 text-[10px] uppercase">截止日期</span>
+                               <span>{task.estimatedTime}</span>
+                            </div>
+                            <div className="flex flex-col text-right">
+                               <span className="opacity-60 text-[10px] uppercase">完成日期</span>
+                               <span>{task.completedAt ? new Date(task.completedAt).toLocaleDateString() : '-'}</span>
+                            </div>
+                         </div>
+                         <div className="flex items-center gap-2 mt-1 pt-2 border-t border-slate-100 dark:border-slate-800/50">
+                            <ZapIcon className="w-3 h-3 text-amber-500" />
+                            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">耗时: {daysTaken} 天</span>
+                         </div>
+                      </div>
+                   );
+                })
+             )}
+          </div>
+        </div>
       </div>
     );
   };
 
-  const renderStats = () => {
-    const total = state.tasks.length;
-    const completed = state.tasks.filter(t => t.isCompleted).length;
-    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
-    
-    const quadrantStats = {
-      [QuadrantType.DO]: state.tasks.filter(t => t.quadrant === QuadrantType.DO).length,
-      [QuadrantType.PLAN]: state.tasks.filter(t => t.quadrant === QuadrantType.PLAN).length,
-      [QuadrantType.DELEGATE]: state.tasks.filter(t => t.quadrant === QuadrantType.DELEGATE).length,
-      [QuadrantType.ELIMINATE]: state.tasks.filter(t => t.quadrant === QuadrantType.ELIMINATE).length,
-    };
+  const renderStats = () => (
+    <div className="max-w-6xl mx-auto min-h-0">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white">数据分析中心</h1>
+          <p className="text-slate-500 dark:text-slate-400 font-mono text-sm">Productivity Analytics</p>
+        </div>
+        <Button variant="secondary" onClick={() => navigateTo('dashboard')}>
+          <ChevronLeft className="w-4 h-4 mr-1" /> 返回看板
+        </Button>
+      </div>
 
-    return (
-       <div className="w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 sticky top-16 md:top-20 z-30 bg-slate-50/95 dark:bg-[#0f172a]/95 py-4 border-b border-slate-200 dark:border-slate-800">
-            <div className="mb-4 md:mb-0">
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">数据统计分析</h2>
-              <p className="text-slate-500 dark:text-slate-400 text-sm">Performance Analytics</p>
-            </div>
-             <div className="flex gap-3 w-full md:w-auto">
-              <Button variant="secondary" onClick={() => navigateTo('dashboard')} className="w-full md:w-auto">
-                <ChevronLeft className="w-4 h-4 mr-2" /> 返回看板
-              </Button>
-            </div>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 mb-8">
+        {/* Quadrant Stats */}
+        <div className="lg:col-span-1">
+           <Card title="象限分布概览" className="h-full border-t-4 border-t-blue-500">
+             <div className="space-y-6">
+               {[QuadrantType.DO, QuadrantType.PLAN, QuadrantType.DELEGATE, QuadrantType.ELIMINATE].map(type => {
+                 const count = state.tasks.filter(t => t.quadrant === type && !t.isCompleted).length;
+                 const total = state.tasks.filter(t => !t.isCompleted).length || 1;
+                 const percentage = Math.round((count / total) * 100);
+                 
+                 const colors = {
+                   [QuadrantType.DO]: 'bg-blue-500',
+                   [QuadrantType.PLAN]: 'bg-emerald-500',
+                   [QuadrantType.DELEGATE]: 'bg-amber-500',
+                   [QuadrantType.ELIMINATE]: 'bg-rose-500'
+                 };
 
-          {/* Top Row: Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
-             <Card className="border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-gradient-to-br dark:from-slate-800 dark:to-blue-900/10">
-               <div className="flex items-center gap-4 mb-4">
-                  <div className="p-3 rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400">
-                     <ListTodo className="w-6 h-6" />
-                  </div>
-                  <span className="text-slate-500 dark:text-slate-400 font-medium text-sm uppercase tracking-wider">总任务数</span>
-               </div>
-               <div className="text-4xl font-bold text-slate-900 dark:text-white">{total}</div>
-             </Card>
+                 const labels = {
+                   [QuadrantType.DO]: '马上做 (Do)',
+                   [QuadrantType.PLAN]: '计划做 (Plan)',
+                   [QuadrantType.DELEGATE]: '授权做 (Delegate)',
+                   [QuadrantType.ELIMINATE]: '减少做 (Eliminate)'
+                 };
 
-             <Card className="border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-gradient-to-br dark:from-slate-800 dark:to-emerald-900/10">
-               <div className="flex items-center gap-4 mb-4">
-                  <div className="p-3 rounded-lg bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                     <CheckCircle className="w-6 h-6" />
-                  </div>
-                  <span className="text-slate-500 dark:text-slate-400 font-medium text-sm uppercase tracking-wider">已完成</span>
-               </div>
-               <div className="text-4xl font-bold text-slate-900 dark:text-white">{completed}</div>
-             </Card>
-
-             <Card className="border-fuchsia-200 dark:border-fuchsia-500/30 bg-fuchsia-50/50 dark:bg-gradient-to-br dark:from-slate-800 dark:to-fuchsia-900/10">
-               <div className="flex items-center gap-4 mb-4">
-                  <div className="p-3 rounded-lg bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-600 dark:text-fuchsia-400">
-                     <Activity className="w-6 h-6" />
-                  </div>
-                  <span className="text-slate-500 dark:text-slate-400 font-medium text-sm uppercase tracking-wider">完成率</span>
-               </div>
-               <div className="text-4xl font-bold text-slate-900 dark:text-white">{completionRate}%</div>
-             </Card>
-          </div>
-
-          {/* Middle Row: Quadrant & Heatmap */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-             {/* Quadrant Distribution (1/3 Width) */}
-             <Card className="lg:col-span-1" title="象限分布概览" actions={<PieChart className="w-5 h-5 text-slate-400" />}>
-                <div className="space-y-6 mt-2">
-                  {[
-                    { label: "马上做 (Do)", color: "bg-blue-500", text: "text-blue-600 dark:text-blue-400", count: quadrantStats[QuadrantType.DO] },
-                    { label: "计划做 (Plan)", color: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", count: quadrantStats[QuadrantType.PLAN] },
-                    { label: "授权做 (Delegate)", color: "bg-amber-500", text: "text-amber-600 dark:text-amber-400", count: quadrantStats[QuadrantType.DELEGATE] },
-                    { label: "减少做 (Eliminate)", color: "bg-rose-500", text: "text-rose-600 dark:text-rose-400", count: quadrantStats[QuadrantType.ELIMINATE] }
-                  ].map((item, idx) => (
-                    <div key={idx}>
-                       <div className="flex justify-between text-sm mb-2">
-                          <span className={`${item.text} font-bold`}>{item.label}</span>
-                          <span className="text-slate-700 dark:text-slate-300 font-mono">{item.count}</span>
-                       </div>
-                       <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full ${item.color} transition-all duration-500`} 
-                            style={{ width: `${total ? (item.count / total * 100) : 0}%`}}
-                          ></div>
-                       </div>
-                    </div>
-                  ))}
-                </div>
-             </Card>
-
-             {/* Heatmap Section (2/3 Width) */}
-             <Card className="lg:col-span-2" title="每日任务热力图" actions={<CalendarDays className="w-5 h-5 text-slate-400" />}>
-               <div className="pt-2 w-full overflow-hidden">
-                  <p className="text-sm text-slate-500 mb-4">
-                    点击方块查看详情。颜色代表任务密度。
-                  </p>
-                  <div className="w-full overflow-x-auto custom-scrollbar">
-                    <Heatmap 
-                      tasks={state.tasks} 
-                      onDayClick={(date, tasks) => setSelectedDateTasks({date, tasks})}
-                    />
-                  </div>
-               </div>
-             </Card>
-          </div>
-
-          {/* Bottom Row: Analysis Advice (Full Width) */}
-          <div className="mb-8">
-             <Card title="分析建议" actions={<BarChart3 className="w-5 h-5 text-slate-400" />}>
-               <div className="flex items-center justify-center h-full border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/30 min-h-[150px]">
-                  <p className="text-slate-500 dark:text-slate-500 text-sm italic text-center px-8">
-                     {total > 0 
-                       ? "数据分析模块已激活。建议优先处理 'Do' 象限任务，并为 'Plan' 象限任务预留大块时间。" 
-                       : "暂无足够数据生成深度建议。请先添加并评估几个任务。"
-                     }
-                  </p>
-               </div>
-             </Card>
-          </div>
-
-          {/* Daily Detail Modal */}
-          {selectedDateTasks && (
-             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <div className="w-full max-w-md bg-white dark:bg-[#1e293b] rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-                   <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-slate-800">
-                      <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                        <CalendarDays className="w-5 h-5 text-blue-500" /> {selectedDateTasks.date}
-                      </h3>
-                      <button onClick={() => setSelectedDateTasks(null)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                         <X className="w-5 h-5 text-slate-500" />
-                      </button>
+                 return (
+                   <div key={type} className="group">
+                     <div className="flex justify-between text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                       <span>{labels[type]}</span>
+                       <span>{count}</span>
+                     </div>
+                     <div className="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                       <div 
+                         className={`h-full ${colors[type]} transition-all duration-1000 ease-out`} 
+                         style={{ width: `${percentage}%` }}
+                       ></div>
+                     </div>
                    </div>
-                   <div className="p-4 overflow-y-auto custom-scrollbar space-y-3">
-                      {selectedDateTasks.tasks.length === 0 ? (
-                        <p className="text-center text-slate-500 py-8 italic">当天无任务记录</p>
-                      ) : (
-                        selectedDateTasks.tasks.map(task => (
-                          <div key={task.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800">
-                             <div className="flex flex-col gap-1">
-                               <span className={`font-medium text-sm ${task.isCompleted ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'}`}>
-                                 {task.name}
-                               </span>
-                               <span className={`text-[10px] px-2 py-0.5 rounded-full w-fit border ${
-                                  task.quadrant === QuadrantType.DO ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                  task.quadrant === QuadrantType.PLAN ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                                  task.quadrant === QuadrantType.DELEGATE ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-rose-100 text-rose-700 border-rose-200'
-                               }`}>
-                                 {task.quadrant}
-                               </span>
-                             </div>
-                             <div className="flex items-center gap-2">
-                                <button onClick={() => toggleTaskCompletion(task)} className={`p-1.5 rounded-md ${task.isCompleted ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 hover:text-emerald-500 hover:bg-slate-100'}`}>
-                                   <CheckCircle className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => deleteTask(task.id)} className="p-1.5 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50">
-                                   <Trash2 className="w-4 h-4" />
-                                </button>
-                             </div>
-                          </div>
-                        ))
-                      )}
-                   </div>
-                </div>
-                <div className="absolute inset-0 -z-10" onClick={() => setSelectedDateTasks(null)}></div>
+                 );
+               })}
              </div>
-          )}
-       </div>
-    );
-  };
-
-  const renderSettings = () => (
-    <div className="w-full max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 sticky top-16 md:top-20 z-30 bg-slate-50/95 dark:bg-[#0f172a]/95 py-4 border-b border-slate-200 dark:border-slate-800">
-        <div className="mb-4 md:mb-0">
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">系统设置</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">System Configuration</p>
+           </Card>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
-          <Button variant="secondary" onClick={() => navigateTo('dashboard')} className="flex-1 md:flex-none">
-            取消
-          </Button>
-          <Button onClick={saveSettings} className="flex-1 md:flex-none">
-            <Save className="w-4 h-4 mr-2" /> 保存配置
-          </Button>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 gap-8">
-        {/* AI Configuration */}
-        <Card title="AI 服务提供商配置" actions={<Cpu className="text-blue-500 dark:text-blue-400 w-5 h-5" />}>
-          <div className="space-y-6">
-            
-            {/* Provider Selection Tabs */}
-            <div className="grid grid-cols-2 gap-4 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
-              <button 
-                onClick={() => setTempSettings({...tempSettings, aiProvider: 'gemini'})}
-                className={`flex flex-col items-center justify-center py-3 rounded-md text-sm font-medium transition-all ${tempSettings.aiProvider === 'gemini' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-              >
-                 <span className="flex items-center gap-2"><Sparkles className="w-4 h-4" /> Google Gemini</span>
-              </button>
-              <button 
-                onClick={() => setTempSettings({...tempSettings, aiProvider: 'siliconflow'})}
-                 className={`flex flex-col items-center justify-center py-3 rounded-md text-sm font-medium transition-all ${tempSettings.aiProvider === 'siliconflow' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-              >
-                 <span className="flex items-center gap-2"><Zap className="w-4 h-4" /> SiliconFlow</span>
-              </button>
-            </div>
-
-            {/* Gemini Settings */}
-            {tempSettings.aiProvider === 'gemini' && (
-               <div className="space-y-5 animate-in fade-in">
-                  <InputField 
-                    label="Gemini API Key" 
-                    type="password" 
-                    placeholder="AIzaSy..." 
-                    value={tempSettings.geminiApiKey}
-                    onChange={(e) => setTempSettings({...tempSettings, geminiApiKey: e.target.value})}
-                  />
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-4 flex gap-3">
-                     <HelpCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                     <div className="text-sm text-blue-800 dark:text-blue-200">
-                        <p className="font-semibold mb-1">如何获取 Key?</p>
-                        <p className="mb-2">访问 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-blue-600">Google AI Studio</a> 创建免费 API Key。</p>
-                        <p className="text-xs opacity-80">注意：免费版有频率限制 (RPM)，如遇报错请稍候再试。</p>
-                     </div>
-                  </div>
-               </div>
-            )}
-
-            {/* SiliconFlow Settings */}
-            {tempSettings.aiProvider === 'siliconflow' && (
-               <div className="space-y-5 animate-in fade-in">
-                  <InputField 
-                    label="SiliconFlow API Key" 
-                    type="password" 
-                    placeholder="sk-..." 
-                    value={tempSettings.siliconFlowApiKey}
-                    onChange={(e) => setTempSettings({...tempSettings, siliconFlowApiKey: e.target.value})}
-                  />
-                  <InputField 
-                    label="Model Name (Optional)" 
-                    type="text" 
-                    placeholder="deepseek-ai/DeepSeek-V3" 
-                    value={tempSettings.siliconFlowModel}
-                    helperText="默认为 deepseek-ai/DeepSeek-V3，支持 Qwen/DeepSeek 系列"
-                    onChange={(e) => setTempSettings({...tempSettings, siliconFlowModel: e.target.value})}
-                  />
-                  <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-lg p-4 flex gap-3">
-                     <ExternalLink className="w-5 h-5 text-purple-500 shrink-0 mt-0.5" />
-                     <div className="text-sm text-purple-800 dark:text-purple-200">
-                        <p className="font-semibold mb-1">关于 SiliconFlow</p>
-                        <p>支持 DeepSeek V3、Qwen 2.5 等国产开源模型，速度快且部分免费。请前往 <a href="https://cloud.siliconflow.cn" target="_blank" className="underline font-bold">硅基流动官网</a> 注册获取 Key。</p>
-                     </div>
-                  </div>
-               </div>
-            )}
-
-             <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-500">连通性测试</span>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={handleTestAIConnection}
-                    isLoading={aiConnectionStatus === 'testing'}
-                    className="!py-2 !text-sm"
-                  >
-                    {aiConnectionStatus === 'success' ? '连接成功' : aiConnectionStatus === 'failed' ? '连接失败' : '测试连接'}
-                  </Button>
+        {/* Heatmap Stats */}
+        <div className="lg:col-span-2">
+          <Card title="每日任务热力图" className="h-full border-t-4 border-t-emerald-500">
+             <div className="flex flex-col h-full">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">点击方块查看详情。颜色代表任务密度。</p>
+                <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 md:p-6 border border-slate-100 dark:border-slate-800/50 overflow-hidden">
+                   <Heatmap tasks={state.tasks} onDayClick={(date, tasks) => setSelectedDateTasks({ date, tasks })} />
                 </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card title="个性化参数 (Prompt)" actions={<UserCog className="text-purple-500 dark:text-purple-400 w-5 h-5" />}>
-          <TextArea 
-            label="用户角色设定 (User Context)" 
-            placeholder="例如：我是一名软件工程师，平时工作涉及很多会议和代码开发..."
-            value={tempSettings.userContext}
-            onChange={(e) => setTempSettings({...tempSettings, userContext: e.target.value})}
-            helperText="让 AI 了解你的职业背景，生成的建议会更精准。"
-          />
-          <TextArea 
-            label="高级指令 (System Prompt)" 
-            placeholder="例如：请用更严厉的语气；或者请总是用结构化的方式回答..."
-            value={tempSettings.customPrompt}
-            onChange={(e) => setTempSettings({...tempSettings, customPrompt: e.target.value})}
-            helperText="附加给 AI 的额外指令。"
-          />
-        </Card>
+             </div>
+          </Card>
+        </div>
       </div>
     </div>
   );
-
-  const renderWizard = () => {
-    if (state.wizardStep === 'input') {
-      return (
-        <div className="max-w-xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-500">
-          <div className="text-center mb-8 md:mb-10">
-            <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-500/10">
-              <Terminal className="w-8 h-8" />
+  
+  const renderWizard = () => (
+    <div className="max-w-2xl mx-auto w-full min-h-0 flex flex-col justify-center">
+      <Button variant="outline" onClick={() => navigateTo('dashboard')} className="self-start mb-6 md:mb-8 hover:bg-white dark:hover:bg-slate-800 border-none shadow-sm">
+        <ChevronLeft className="w-4 h-4 mr-1" /> 返回看板
+      </Button>
+      
+      <Card className="shadow-2xl dark:shadow-blue-900/10 border-0 bg-white/80 dark:bg-[#1e293b]/90 backdrop-blur-xl">
+        {state.wizardStep === 'input' && (
+          <div className="space-y-6 md:space-y-8 py-4">
+            <div className="text-center">
+              <h2 className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">新任务</h2>
+              <p className="text-slate-500 dark:text-slate-400">让我们开始分析您的待办事项</p>
             </div>
-            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">新任务评估</h2>
-            <p className="text-slate-500 dark:text-slate-400">通过3个智能问题，AI 将帮你把任务放入正确的象限。</p>
-          </div>
-          <Card className="shadow-2xl shadow-slate-200/50 dark:shadow-none border-0 ring-1 ring-slate-200 dark:ring-slate-700">
-            <InputField 
-              label="任务名称" 
-              placeholder="例如：完成 Q3 季度报告" 
-              value={inputName}
-              onChange={(e) => setInputName(e.target.value)}
-              autoFocus
-            />
-            <InputField 
-              label="截止日期" 
-              type="date" 
-              value={inputTime}
-              onChange={(e) => setInputTime(e.target.value)}
-            />
-            <div className="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
-              {[0, 1, 3, 7].map(days => (
-                <button 
-                  key={days}
-                  onClick={() => setDateOffset(days)}
-                  className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full transition-colors whitespace-nowrap"
-                >
-                  {days === 0 ? '今天' : days === 1 ? '明天' : `+${days}天`}
-                </button>
-              ))}
+            
+            <div className="space-y-6">
+              <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                <input
+                  type="text"
+                  placeholder="例如：完成季度财务报表"
+                  className="relative block w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-lg p-4 md:p-5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 placeholder-slate-400 shadow-xl shadow-slate-200/50 dark:shadow-none"
+                  value={inputName}
+                  onChange={(e) => setInputName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleTaskInputSubmit()}
+                  autoFocus
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">截止日期</label>
+                  <input 
+                    type="date"
+                    className="w-full bg-transparent font-mono text-slate-700 dark:text-slate-300 focus:outline-none text-sm"
+                    value={inputTime}
+                    onChange={(e) => setInputTime(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
 
             {state.error && (
-              <div className="bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 p-4 rounded-lg text-sm mb-6 flex items-center gap-2">
-                <Activity className="w-4 h-4" /> {state.error}
+              <div className="p-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-sm rounded-xl flex items-center gap-3 animate-shake">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                {state.error}
               </div>
             )}
 
-            <Button 
-              className="w-full text-lg h-12 shadow-xl shadow-blue-500/20" 
-              onClick={handleStartAssessment} 
-              disabled={!inputName || !inputTime}
-              isLoading={isLoading}
-            >
-               开始评估 <ArrowRight className="ml-2 w-5 h-5" />
+            <Button onClick={handleTaskInputSubmit} isLoading={isLoading} className="w-full py-4 text-lg rounded-xl shadow-blue-500/25">
+              开始评估 <ArrowRight className="w-5 h-5 ml-2" />
             </Button>
-          </Card>
-          <div className="text-center mt-8">
-            <button onClick={() => navigateTo('dashboard')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-medium transition-colors">
-              返回看板
-            </button>
           </div>
-        </div>
-      );
-    }
+        )}
 
-    if (state.wizardStep === 'assessment') {
-      return (
-        <div className="max-w-xl mx-auto w-full animate-in fade-in slide-in-from-right-8 duration-500 p-4 md:p-0">
-           <div className="flex items-center justify-between mb-6">
-             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">任务评估</h2>
-             <span className="text-sm font-mono bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full text-slate-500">AI Generated</span>
-           </div>
-           
-           <div className="space-y-4 mb-8">
-             {state.currentQuestions.map((q, idx) => (
-               <div key={q.id} className="bg-white dark:bg-[#1e293b] p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-300">
-                 <div className="flex justify-between items-center gap-4">
-                   <span className="font-medium text-lg text-slate-800 dark:text-slate-200 leading-relaxed">{q.text}</span>
-                   <div className="flex gap-2 shrink-0">
-                     <button 
-                       onClick={() => toggleAnswer(idx.toString(), true)}
-                       className={`w-12 h-12 rounded-lg font-bold transition-all flex items-center justify-center border-2
-                         ${state.currentAnswers[idx.toString()] === true 
-                           ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105' 
-                           : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:border-blue-300'}`}
+        {state.wizardStep === 'assessment' && (
+          <div className="space-y-6 md:space-y-8 py-2">
+             <div className="text-center">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">情境评估</h2>
+                <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">请快速回答以下 3 个关键问题</p>
+             </div>
+             
+             <div className="space-y-4">
+               {state.currentQuestions.map((q, idx) => (
+                 <div key={q.id} className="p-5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-700/50 transition-all duration-300 hover:border-blue-200 dark:hover:border-blue-800">
+                   <p className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-4 leading-relaxed">{q.text}</p>
+                   <div className="flex gap-3">
+                     <button
+                       onClick={() => setState(prev => ({ ...prev, currentAnswers: { ...prev.currentAnswers, [idx]: true } }))}
+                       className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all duration-200 border-2 ${state.currentAnswers[idx] === true ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300 dark:hover:border-slate-600'}`}
                      >
-                       是
+                       Yes
                      </button>
-                     <button 
-                       onClick={() => toggleAnswer(idx.toString(), false)}
-                       className={`w-12 h-12 rounded-lg font-bold transition-all flex items-center justify-center border-2
-                         ${state.currentAnswers[idx.toString()] === false 
-                           ? 'bg-slate-700 border-slate-700 text-white shadow-lg scale-105' 
-                           : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-400'}`}
+                     <button
+                       onClick={() => setState(prev => ({ ...prev, currentAnswers: { ...prev.currentAnswers, [idx]: false } }))}
+                       className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all duration-200 border-2 ${state.currentAnswers[idx] === false ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300 dark:hover:border-slate-600'}`}
                      >
-                       否
+                       No
                      </button>
                    </div>
                  </div>
-               </div>
-             ))}
-           </div>
+               ))}
+             </div>
 
-           {state.error && (
-              <div className="bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 p-4 rounded-lg text-sm mb-6">
-                {state.error}
+             <div className="pt-4">
+               <Button 
+                  onClick={handleAnswerSubmit} 
+                  disabled={Object.keys(state.currentAnswers).length < state.currentQuestions.length}
+                  className="w-full py-4 text-lg rounded-xl"
+               >
+                 生成分析报告 <BrainCircuit className="w-5 h-5 ml-2" />
+               </Button>
+             </div>
+          </div>
+        )}
+
+        {(state.wizardStep === 'analyzing' || state.batchWizardStep === 'analyzing') && (
+          <div className="py-12 md:py-16 text-center space-y-6 md:space-y-8">
+            <div className="relative w-20 h-20 md:w-24 md:h-24 mx-auto">
+               <div className="absolute inset-0 border-4 border-slate-100 dark:border-slate-800 rounded-full"></div>
+               <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+               <BrainCircuit className="absolute inset-0 m-auto w-8 h-8 md:w-10 md:h-10 text-blue-500 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white mb-2">AI 正在思考中</h3>
+              <p className="text-slate-500 dark:text-slate-400 min-h-[24px] transition-all duration-500">
+                 {state.view === 'batch-wizard' ? BATCH_THINKING_MESSAGES[thinkingStep] : THINKING_MESSAGES[thinkingStep]}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {state.wizardStep === 'result' && state.currentAnalysis && (
+          <div className="space-y-6 md:space-y-8">
+             <div className="text-center pb-4 border-b border-slate-100 dark:border-slate-800">
+                <span className="text-sm font-bold text-slate-400 uppercase tracking-wider">分析结果</span>
+                <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-1">{state.currentTaskInput?.name}</h2>
+             </div>
+             
+             <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl text-center border border-slate-100 dark:border-slate-700">
+                   <p className="text-xs text-slate-400 font-bold uppercase mb-1">紧急性</p>
+                   <p className={`text-lg font-bold ${state.currentAnalysis.isUrgent ? 'text-rose-500' : 'text-slate-600 dark:text-slate-400'}`}>
+                      {state.currentAnalysis.isUrgent ? 'Urgent' : 'Not Urgent'}
+                   </p>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl text-center border border-slate-100 dark:border-slate-700">
+                   <p className="text-xs text-slate-400 font-bold uppercase mb-1">重要性</p>
+                   <p className={`text-lg font-bold ${state.currentAnalysis.isImportant ? 'text-blue-500' : 'text-slate-600 dark:text-slate-400'}`}>
+                      {state.currentAnalysis.isImportant ? 'Important' : 'Not Important'}
+                   </p>
+                </div>
+             </div>
+
+             <div className={`p-6 rounded-2xl border-2 flex flex-col items-center justify-center gap-2
+                ${state.currentAnalysis.quadrant === QuadrantType.DO ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300' : ''}
+                ${state.currentAnalysis.quadrant === QuadrantType.PLAN ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300' : ''}
+                ${state.currentAnalysis.quadrant === QuadrantType.DELEGATE ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300' : ''}
+                ${state.currentAnalysis.quadrant === QuadrantType.ELIMINATE ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300' : ''}
+             `}>
+                <span className="text-sm font-bold uppercase opacity-70">建议归类</span>
+                <span className="text-3xl font-black">{state.currentAnalysis.quadrant}</span>
+             </div>
+
+             <div className="space-y-4">
+                <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                   <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-500" /> 核心逻辑
+                   </h4>
+                   <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
+                      {getLocalizedContent(state.currentAnalysis.reasoning)}
+                   </p>
+                </div>
+                <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                   <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-500" /> 策略建议
+                   </h4>
+                   <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
+                      {getLocalizedContent(state.currentAnalysis.advice)}
+                   </p>
+                </div>
+             </div>
+
+             <div className="flex gap-3 pt-4">
+                <Button variant="secondary" onClick={() => setState(prev => ({...prev, wizardStep: 'assessment'}))} className="flex-1">
+                   重新评估
+                </Button>
+                <Button onClick={handleSaveTask} className="flex-[2] shadow-lg shadow-blue-500/20" isLoading={isLoading}>
+                   确认并添加 <CheckCircle className="w-5 h-5 ml-2" />
+                </Button>
+             </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+
+  const renderBatchWizard = () => (
+     <div className="max-w-4xl mx-auto w-full min-h-0 flex flex-col">
+        <div className="flex items-center justify-between mb-6 md:mb-8">
+           <Button variant="outline" onClick={() => navigateTo('dashboard')} className="border-none shadow-sm hover:bg-white dark:hover:bg-slate-800">
+             <ChevronLeft className="w-4 h-4 mr-1" /> 返回看板
+           </Button>
+           <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white">批量任务创建</h2>
+        </div>
+
+        <Card className="shadow-2xl dark:shadow-indigo-900/10 border-0 bg-white/80 dark:bg-[#1e293b]/90 backdrop-blur-xl flex-1 flex flex-col min-h-0">
+           {state.batchWizardStep === 'input' && (
+              <div className="space-y-6 h-full flex flex-col">
+                 <div className="flex-none">
+                    <p className="text-slate-500 dark:text-slate-400">输入多个任务，每行一个。AI 将协助您快速分类。</p>
+                 </div>
+                 <div className="flex-1 flex flex-col min-h-[300px]">
+                    <TextArea 
+                       label="任务列表" 
+                       placeholder={`例如：\n整理年度财务报表\n预订下周出差机票\n回复客户咨询邮件`}
+                       value={batchRawInput}
+                       onChange={e => setBatchRawInput(e.target.value)}
+                       className="flex-1 font-mono text-sm leading-relaxed"
+                    />
+                 </div>
+                 <div className="flex-none bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mb-4">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">统一截止日期 (可选)</label>
+                    <input type="date" value={batchCommonDate} onChange={e => setBatchCommonDate(e.target.value)} className="w-full bg-transparent text-slate-700 dark:text-slate-300 font-mono text-sm focus:outline-none" />
+                 </div>
+                 <div className="flex-none">
+                    <Button onClick={handleBatchInputSubmit} isLoading={isLoading} className="w-full py-4 text-lg rounded-xl shadow-indigo-500/25 bg-indigo-600 hover:bg-indigo-700">
+                       下一步：批量评估 <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                 </div>
+                 {state.error && <div className="text-rose-500 text-sm text-center font-medium animate-pulse">{state.error}</div>}
               </div>
            )}
 
-           <div className="flex gap-4">
-              <Button variant="secondary" onClick={() => setState(prev => ({ ...prev, wizardStep: 'input' }))} className="flex-1">
-                上一步
-              </Button>
-              <Button 
-                className="flex-[2] text-lg shadow-xl shadow-blue-500/20" 
-                onClick={handleAnalyze}
-                disabled={Object.keys(state.currentAnswers).length < state.currentQuestions.length}
-                isLoading={isLoading}
-              >
-                <Sparkles className="w-5 h-5 mr-2" /> 生成决策分析
-              </Button>
-           </div>
-        </div>
-      );
-    }
+           {state.batchWizardStep === 'assessment' && (
+              <div className="flex flex-col h-full space-y-6">
+                 <div className="flex justify-between items-end pb-4 border-b border-slate-100 dark:border-slate-800">
+                    <div>
+                       <h3 className="text-xl font-bold text-slate-900 dark:text-white">批量评估</h3>
+                       <p className="text-sm text-slate-500 dark:text-slate-400">请快速回答以下关键问题</p>
+                    </div>
+                    <div className="text-sm font-mono font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full">
+                       {/* Count strictly fully answered tasks (those with 3 answers) */}
+                       {state.batchInputs.filter(t => {
+                          const ans = state.batchAnswers[t.id];
+                          return ans && ans[0] !== undefined && ans[1] !== undefined && ans[2] !== undefined;
+                       }).length}/{state.batchInputs.length} 已填完
+                    </div>
+                 </div>
 
-    if (state.wizardStep === 'analyzing') {
-      return (
-        <div className="max-w-md mx-auto w-full text-center pt-10 animate-in fade-in duration-700">
-           <div className="relative w-32 h-32 mx-auto mb-8">
-              <div className="absolute inset-0 border-4 border-slate-100 dark:border-slate-800 rounded-full"></div>
-              <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <BrainCircuit className="w-12 h-12 text-blue-500 animate-pulse" />
+                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
+                    {state.batchInputs.map((task) => {
+                       const questions = state.batchQuestions[task.id] || [];
+                       return (
+                          <div key={task.id} className="p-5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                             <h4 className="font-bold text-lg text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                {task.name}
+                             </h4>
+                             <div className="grid grid-cols-1 gap-4">
+                                {questions.map((qText, qIdx) => (
+                                   <div key={qIdx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700/50">
+                                      <span className="text-sm text-slate-600 dark:text-slate-300 font-medium flex-1">{qText}</span>
+                                      <div className="flex gap-2 shrink-0">
+                                         <button 
+                                            onClick={() => setState(prev => ({...prev, batchAnswers: {...prev.batchAnswers, [task.id]: {...prev.batchAnswers[task.id], [qIdx]: true}}}))}
+                                            className={`px-4 py-1.5 rounded text-xs font-bold border transition-colors ${state.batchAnswers[task.id]?.[qIdx] === true ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-slate-50 dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-600 hover:border-emerald-400'}`}
+                                         >Yes</button>
+                                         <button 
+                                            onClick={() => setState(prev => ({...prev, batchAnswers: {...prev.batchAnswers, [task.id]: {...prev.batchAnswers[task.id], [qIdx]: false}}}))}
+                                            className={`px-4 py-1.5 rounded text-xs font-bold border transition-colors ${state.batchAnswers[task.id]?.[qIdx] === false ? 'bg-rose-500 text-white border-rose-500' : 'bg-slate-50 dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-600 hover:border-rose-400'}`}
+                                         >No</button>
+                                      </div>
+                                   </div>
+                                ))}
+                             </div>
+                          </div>
+                       );
+                    })}
+                 </div>
+
+                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <Button onClick={handleBatchAnswerSubmit} className="w-full py-4 text-lg rounded-xl shadow-indigo-500/25 bg-indigo-600 hover:bg-indigo-700">
+                       生成批量分析 <BrainCircuit className="w-5 h-5 ml-2" />
+                    </Button>
+                 </div>
+                 {state.error && <div className="text-rose-500 text-sm text-center font-medium animate-pulse">{state.error}</div>}
               </div>
-           </div>
-           <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4 animate-pulse">
-             AI 正在思考
-           </h3>
-           <div className="h-8 overflow-hidden relative">
-             {THINKING_MESSAGES.map((msg, idx) => (
-                <p 
-                  key={idx} 
-                  className={`absolute w-full text-slate-500 dark:text-slate-400 transition-all duration-500 transform
-                    ${idx === thinkingStep ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}
-                  `}
-                >
-                  {msg}
-                </p>
-             ))}
-           </div>
-        </div>
-      );
-    }
+           )}
 
-    if (state.wizardStep === 'result' && state.currentAnalysis && state.currentTaskInput) {
-      const previewTask: Task = {
-        id: 'preview',
-        name: state.currentTaskInput.name,
-        estimatedTime: state.currentTaskInput.estimatedTime,
-        createdAt: Date.now(),
-        isCompleted: false,
-        ...state.currentAnalysis
-      };
+           {state.batchWizardStep === 'review' && (
+              <div className="flex flex-col h-full space-y-6">
+                 <div className="flex-none pb-4 border-b border-slate-100 dark:border-slate-800">
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">批量分析结果</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">请确认分类，必要时可手动调整，然后保存。</p>
+                 </div>
 
-      return (
-        <div className="max-w-3xl mx-auto w-full h-full flex flex-col animate-in zoom-in-95 duration-300 pb-8 p-4 md:p-0">
-           <div className="flex items-center justify-between mb-6">
-             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">分析报告</h2>
-             <div className="flex gap-2">
-                <Button variant="secondary" onClick={startNewTask}>
-                  放弃
-                </Button>
-                <Button onClick={handleSaveTask} className="shadow-lg shadow-blue-500/20">
-                  <Save className="w-4 h-4 mr-2" /> 保存到看板
-                </Button>
+                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+                    {state.batchResults.map((res, idx) => {
+                       const original = state.batchInputs.find(t => t.id === res.taskId);
+                       return (
+                          <div key={idx} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row gap-4 items-start">
+                             <div className="flex-1">
+                                <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-1">{original?.name}</h4>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 leading-relaxed">{getLocalizedContent(res.reasoning)}</p>
+                                <div className="flex items-center gap-2 text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 px-2 py-1 rounded w-fit">
+                                   <Sparkles className="w-3 h-3" />
+                                   {getLocalizedContent(res.advice)}
+                                </div>
+                             </div>
+                             <div className="flex flex-row md:flex-col gap-2 shrink-0 w-full md:w-auto overflow-x-auto md:overflow-visible">
+                                {[QuadrantType.DO, QuadrantType.PLAN, QuadrantType.DELEGATE, QuadrantType.ELIMINATE].map(q => (
+                                   <button
+                                      key={q}
+                                      onClick={() => {
+                                         const newResults = [...state.batchResults];
+                                         newResults[idx].quadrant = q;
+                                         setState(prev => ({ ...prev, batchResults: newResults }));
+                                      }}
+                                      className={`px-3 py-1.5 rounded text-xs font-bold border whitespace-nowrap transition-all ${res.quadrant === q ? 'bg-slate-800 text-white dark:bg-white dark:text-slate-900 border-transparent' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-400'}`}
+                                   >
+                                      {q}
+                                   </button>
+                                ))}
+                             </div>
+                          </div>
+                       );
+                    })}
+                 </div>
+
+                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <Button onClick={handleBatchReviewSave} isLoading={isLoading} className="w-full py-4 text-lg rounded-xl shadow-emerald-500/25 bg-emerald-600 hover:bg-emerald-700">
+                       确认并批量添加 <CheckCircle className="w-5 h-5 ml-2" />
+                    </Button>
+                 </div>
+              </div>
+           )}
+        </Card>
+     </div>
+  );
+
+  const renderSettings = () => (
+    <div className="max-w-3xl mx-auto w-full min-h-0 flex flex-col">
+       <div className="flex items-center justify-between mb-8">
+          <div>
+            <h2 className="text-3xl font-black text-slate-900 dark:text-white">系统设置</h2>
+            <p className="text-slate-500 dark:text-slate-400 font-mono text-sm">System Configuration</p>
+          </div>
+          <Button variant="outline" onClick={() => navigateTo('dashboard')} className="border-none shadow-sm hover:bg-white dark:hover:bg-slate-800">
+            <X className="w-5 h-5 mr-1" /> 关闭
+          </Button>
+       </div>
+
+       <div className="flex-1 overflow-y-auto custom-scrollbar pb-10 space-y-8">
+          {/* AI Settings */}
+          <section className="space-y-4">
+             <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
+                <Cpu className="w-5 h-5 text-blue-500" />
+                <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">AI 模型配置</h3>
              </div>
-           </div>
-           
-           <div className="flex-1 overflow-hidden bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl relative">
-             <div className="h-full p-6 overflow-y-auto custom-scrollbar">
-                <div className="flex justify-between items-start mb-6">
-                   <h3 className="text-2xl font-bold leading-tight mr-2 text-slate-900 dark:text-white">{previewTask.name}</h3>
-                   <span className={`px-4 py-1.5 rounded-full font-bold text-sm border ${
-                      previewTask.quadrant === 'Do' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                      previewTask.quadrant === 'Plan' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                      previewTask.quadrant === 'Delegate' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-rose-100 text-rose-700 border-rose-200'
-                   }`}>
-                     {previewTask.quadrant}
-                   </span>
+             
+             <Card className="p-0 overflow-hidden border-blue-100 dark:border-blue-900/30">
+                <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-900/30 flex gap-4">
+                   <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                         type="radio" 
+                         name="aiProvider"
+                         value="gemini"
+                         checked={tempSettings.aiProvider === 'gemini'}
+                         onChange={() => setTempSettings(s => ({ ...s, aiProvider: 'gemini' }))}
+                         className="text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="font-bold text-slate-700 dark:text-slate-300">Google Gemini</span>
+                   </label>
+                   <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                         type="radio" 
+                         name="aiProvider"
+                         value="siliconflow"
+                         checked={tempSettings.aiProvider === 'siliconflow'}
+                         onChange={() => setTempSettings(s => ({ ...s, aiProvider: 'siliconflow' }))}
+                         className="text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="font-bold text-slate-700 dark:text-slate-300">SiliconFlow (DeepSeek)</span>
+                   </label>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                   <div className="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200 dark:border-slate-800">
-                      <div className="text-xs text-slate-500 uppercase font-bold mb-2">分析理由</div>
-                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{getLocalizedContent(previewTask.reasoning)}</p>
-                   </div>
-                    <div className="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200 dark:border-slate-800">
-                      <div className="text-xs text-slate-500 uppercase font-bold mb-2">核心建议</div>
-                      <p className="text-slate-800 dark:text-indigo-200 font-medium leading-relaxed">{getLocalizedContent(previewTask.advice)}</p>
-                   </div>
-                </div>
+                <div className="p-5 space-y-5">
+                   {tempSettings.aiProvider === 'gemini' ? (
+                      <>
+                         <InputField 
+                            label="Gemini API Key" 
+                            type="password" 
+                            value={tempSettings.geminiApiKey} 
+                            onChange={e => setTempSettings(s => ({ ...s, geminiApiKey: e.target.value }))}
+                            placeholder="AIzaSy..."
+                         />
+                         <div>
+                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-400 mb-2">模型版本</label>
+                            <div className="flex gap-3">
+                               <button 
+                                  onClick={() => setTempSettings(s => ({ ...s, aiModel: 'flash' }))}
+                                  className={`flex-1 py-3 px-4 rounded-lg border-2 text-sm font-bold transition-all ${tempSettings.aiModel === 'flash' ? 'border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'border-slate-200 dark:border-slate-700 text-slate-500'}`}
+                               >
+                                  Gemini 2.5 Flash (快速)
+                               </button>
+                               <button 
+                                  onClick={() => setTempSettings(s => ({ ...s, aiModel: 'pro' }))}
+                                  className={`flex-1 py-3 px-4 rounded-lg border-2 text-sm font-bold transition-all ${tempSettings.aiModel === 'pro' ? 'border-purple-500 bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' : 'border-slate-200 dark:border-slate-700 text-slate-500'}`}
+                               >
+                                  Gemini 3 Pro (高智商)
+                               </button>
+                            </div>
+                         </div>
+                      </>
+                   ) : (
+                      <>
+                         <InputField 
+                            label="SiliconFlow API Key" 
+                            type="password" 
+                            value={tempSettings.siliconFlowApiKey} 
+                            onChange={e => setTempSettings(s => ({ ...s, siliconFlowApiKey: e.target.value }))}
+                            placeholder="sk-..."
+                         />
+                         <InputField 
+                            label="Model Name" 
+                            value={tempSettings.siliconFlowModel} 
+                            onChange={e => setTempSettings(s => ({ ...s, siliconFlowModel: e.target.value }))}
+                            placeholder="deepseek-ai/DeepSeek-V3"
+                            helperText="例如: deepseek-ai/DeepSeek-V3, deepseek-ai/DeepSeek-R1"
+                         />
+                      </>
+                   )}
 
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
-                   <h4 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                     <ListTodo className="w-5 h-5 text-blue-500"/> 推荐执行步骤
-                   </h4>
-                   <div className="space-y-3">
-                      {previewTask.steps.map((s, i) => (
-                        <div key={i} className="flex items-start gap-4 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold shrink-0">{i+1}</span>
-                           <span className="text-slate-700 dark:text-slate-300">{getLocalizedContent(s)}</span>
-                        </div>
-                      ))}
+                   <div className="flex items-center gap-4 pt-2">
+                      <Button variant="secondary" onClick={testAI} isLoading={aiConnectionStatus === 'testing'} className="w-full md:w-auto">
+                         {aiConnectionStatus === 'success' ? <span className="text-emerald-600 flex items-center"><CheckCircle className="w-4 h-4 mr-2"/> 连接成功</span> : '测试 AI 连接'}
+                      </Button>
+                      {aiConnectionStatus === 'failed' && <span className="text-rose-500 text-sm font-medium">连接失败，请检查 Key</span>}
                    </div>
                 </div>
+             </Card>
+          </section>
+
+          {/* User Context */}
+          <section className="space-y-4">
+             <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
+                <UserCog className="w-5 h-5 text-indigo-500" />
+                <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">个性化上下文</h3>
              </div>
-           </div>
-        </div>
-      );
-    }
-  };
+             <Card>
+                <TextArea 
+                   label="您的职业角色 / 背景" 
+                   value={tempSettings.userContext} 
+                   onChange={e => setTempSettings(s => ({ ...s, userContext: e.target.value }))}
+                   placeholder="例如：我是一名产品经理，负责两个SaaS产品，平时会议很多..."
+                   helperText="AI 将根据您的角色调整评估标准（例如：对CEO来说，'授权'更重要）"
+                   className="min-h-[100px]"
+                />
+                <TextArea 
+                   label="自定义 Prompt 指令 (可选)" 
+                   value={tempSettings.customPrompt} 
+                   onChange={e => setTempSettings(s => ({ ...s, customPrompt: e.target.value }))}
+                   placeholder="例如：请用更严厉的语气指出我的拖延问题..."
+                   className="min-h-[80px]"
+                />
+             </Card>
+          </section>
+          
+          <div className="h-12"></div>
+       </div>
+
+       <div className="flex-none pt-6 border-t border-slate-200 dark:border-slate-700 flex gap-4 bg-slate-50 dark:bg-[#0f172a] -mx-4 px-4 sticky bottom-0">
+          <Button variant="secondary" onClick={resetSettings} className="flex-1">重置默认</Button>
+          <Button onClick={saveSettings} className="flex-[2] shadow-lg shadow-blue-500/20">保存设置</Button>
+       </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0f172a] transition-colors duration-300 font-sans">
-      {/* Header */}
-      <header className="sticky top-0 z-40 w-full backdrop-blur-md bg-white/70 dark:bg-[#0f172a]/80 border-b border-slate-200 dark:border-slate-800">
-        <div className="w-full px-4 md:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div className="min-h-screen flex flex-col transition-colors duration-300 bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-200 overflow-hidden font-sans">
+      {/* Top Navigation Bar */}
+      <header className="flex-none h-16 bg-white/80 dark:bg-[#1e293b]/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 z-50 sticky top-0">
+        <div className="max-w-[1920px] mx-auto px-4 md:px-6 h-full flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateTo('dashboard')}>
-            <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-2 rounded-lg shadow-lg shadow-blue-500/20">
-              <BrainCircuit className="w-6 h-6" />
+            <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <Cpu className="w-5 h-5 md:w-6 md:h-6 text-white" />
             </div>
-            <h1 className="text-xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
-              Matrix <span className="font-light">AI</span>
-            </h1>
+            <span className="font-black text-lg md:text-xl tracking-tighter hidden md:block">Matrix<span className="text-slate-400 font-normal">AI</span></span>
           </div>
-
+          
           <div className="flex items-center gap-2 md:gap-4">
-             <button
-               onClick={toggleLanguage}
-               className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors font-bold text-xs w-9 h-9 flex items-center justify-center"
-               title="Switch Language"
-             >
-               {state.language === 'zh' ? '中' : 'En'}
-             </button>
-             <button 
-               onClick={toggleTheme} 
-               className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-             >
-               {state.theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-             </button>
-             <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
-             <button 
-               onClick={() => navigateTo('settings')}
-               className={`p-2 rounded-full transition-all ${state.view === 'settings' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400'}`}
-             >
-               <Settings className="w-5 h-5" />
-             </button>
+            <button 
+              onClick={toggleLanguage}
+              className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors relative group"
+              title={state.language === 'zh' ? "Switch to English" : "切换为中文"}
+            >
+               <Languages className="w-5 h-5" />
+               <span className="absolute top-1 right-1 flex h-2 w-2">
+                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500 font-bold text-[8px] items-center justify-center text-white">{state.language.toUpperCase()}</span>
+               </span>
+            </button>
+            <button 
+              onClick={toggleTheme} 
+              className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+            >
+              {state.theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+            <button 
+              onClick={() => navigateTo('settings')} 
+              className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 w-full p-4 md:p-6 lg:p-8 relative">
-        {state.view === 'dashboard' && renderDashboard()}
-        {state.view === 'wizard' && (
-           <div className="h-full flex flex-col justify-center py-10">
-             {renderWizard()}
-           </div>
-        )}
-        {state.view === 'batch-wizard' && (
-           <div className="h-full flex flex-col justify-center py-10">
-             {renderBatchWizard()}
-           </div>
-        )}
-        {state.view === 'settings' && renderSettings()}
-        {state.view === 'stats' && renderStats()}
-        {state.view === 'completed-tasks' && renderCompletedTasks()}
+      {/* Main Content Area */}
+      <main className="flex-1 relative overflow-hidden flex flex-col">
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
+          <div className="max-w-[1920px] mx-auto p-4 md:p-6 lg:p-8 min-h-full">
+            {state.view === 'dashboard' && renderDashboard()}
+            {state.view === 'wizard' && renderWizard()}
+            {state.view === 'batch-wizard' && renderBatchWizard()}
+            {state.view === 'settings' && renderSettings()}
+            {state.view === 'stats' && renderStats()}
+            {state.view === 'completed-tasks' && renderCompletedTasks()}
+          </div>
+        </div>
       </main>
+
+      {/* Task Detail Overlay (Mobile) */}
+      {selectedTask && (
+        <div className="lg:hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+           {renderTaskDetail(selectedTask, true)}
+        </div>
+      )}
     </div>
   );
 };
